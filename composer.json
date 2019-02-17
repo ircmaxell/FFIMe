@@ -1,0 +1,20 @@
+{
+    "name": "ircmaxell/ffime",
+    "description": "Make life easy when working with 7.4's FFI",
+    "license": "BSD",
+    "authors": [
+        {
+            "name": "Anthony Ferrara",
+            "email": "ircmaxell@gmail.com"
+        }
+    ],
+    "require": {
+    },
+    "require-dev": {
+    },
+    "autoload": {
+        "psr-4": {
+            "FFIMe\\": "lib/"
+        }
+    }
+}
