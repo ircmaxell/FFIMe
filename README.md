@@ -1,29 +1,20 @@
-[![Build Status](https://travis-ci.org/ircmaxell/php-cfg.svg?branch=master)](https://travis-ci.org/ircmaxell/php-cfg)
 
-# PHP-CFG
 
-Pure PHP implementation of a control flow graph (CFG) with instructions in static single assignment (SSA) form.
+# FFIMe
 
-The used SSA construction algorithm is based on "Simple and Efficient Construction of Static Single Assignment Form" by
-Braun et al. This algorithm constructs SSA form directly from the abstract syntax tree, without going through a non-SSA
-IR first. If you're looking for dominance frontiers, you won't find them here...
+This is a wrapper library for PHP 7.4's FFI extension.
 
-The constructed SSA form is minimal and pure (or is supposed to be).
+You provide it with a shared object, and one or more header files, and it automatically generates the C structures and function signatures for you (just like doing it in C would).
 
-## Usage
+Eventually, this will be more structured to provide a "nicer" interface to use the FFI itself.
 
-To bootstrap the parser, you need to give it a `PhpParser` instance:
+Usage:
+
 ```php
-$parser = new PHPCfg\Parser(
-    (new PhpParser\ParserFactory)->create(PhpParser\ParserFactory::PREFER_PHP7)
-);
+$libc = new FFIMe\FFIMe("/lib/x86_64-linux-gnu/libc.so.6");
+$libc->include("/usr/include/printf.h")->build();
+
+$libc->printf("test");
 ```
-Then, just call parse on a block of code, giving it a filename:
-```php
-$script = $parser->parse(file_get_contents(__FILE__), __FILE__);
-```
-To dump the graph, simply use the built-in dumper:
-```php
-$dumper = new PHPCfg\Printer\Text();
-echo $dumper->printScript($script);
-```
+
+Note: This does not work yet, except for certain relatively simple header files (such as those used by libjit, libgccjit, etc). Much more support for operators is needed.
