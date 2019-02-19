@@ -1,7 +1,7 @@
 {
     "name": "ircmaxell/ffime",
     "description": "Make life easy when working with 7.4's FFI",
-    "license": "BSD",
+    "license": "MIT",
     "authors": [
         {
             "name": "Anthony Ferrara",
