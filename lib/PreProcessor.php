@@ -27,12 +27,13 @@ class PreProcessor {
             if (empty($line)) {
                 continue;
             }
-            if ($line[0]->type === Token::PUNCTUATOR && $line[0]->value === '#') {
-                array_shift($line); // get rid of the punctuator
+            if ($line->type === Token::PUNCTUATOR && $line->value === '#') {
+                $line = $line->next;
                 if (empty($line)) {
                     continue; // ignore blank preprocessor directives
                 }
-                $directive = array_shift($line); 
+                $directive = $line;
+                $line = $line->next; 
                 if ($directive->type !== Token::IDENTIFIER) {
                     var_dump($directive, $line);
                     die("Unknown directive");
@@ -43,24 +44,24 @@ class PreProcessor {
                         $lines = array_merge($tokens, $lines);
                         break;
                     case 'define':
-                        if (count($line) < 1) {
+                        if (empty($line)) {
                             throw new \LogicException("#define must have a name");
                         }
-                        $identifier = array_shift($line);
+                        $identifier = $line;
                         if ($identifier->type !== Token::IDENTIFIER) {
                             throw new \LogicException("Only #define identifiers");
                         }
-                        $this->context->define($identifier->value, $line);
+                        $this->context->define($identifier->value, $line->next);
                         break;
                     case 'undef':
-                        if (count($line) !== 1) {
+                        if (empty($line)) {
                             throw new \LogicException("#undef must only have a single argument");
                         }
-                        $identifier = array_shift($line);
+                        $identifier = $line;
                         if ($identifier->type !== Token::IDENTIFIER) {
                             throw new \LogicException("Undef only works on identifiers");
                         }
-                        if (!empty($line)) {
+                        if (!empty($line->next)) {
                             var_dump($line);
                             die("failed parsing undef");
                         }
@@ -76,13 +77,13 @@ class PreProcessor {
                         break;
                     case 'ifdef':
                     case 'ifndef':
-                        if (count($line) !== 1) {
+                        if (empty($line)) {
                             throw new \LogicException("Only a single arg is allowed for #{$directive->value}");
                         }
-                        if ($line[0]->type !== Token::IDENTIFIER) {
+                        if ($line->type !== Token::IDENTIFIER) {
                             throw new \LogicException("Only an identifier arg is allowed for #{$directive->value}");
                         }
-                        $tmp = $this->context->isDefined($line[0]->value);
+                        $tmp = $this->context->isDefined($line->value);
                         if ($tmp xor $directive->value === 'ifdef') {
                             // skip if they aren't the same boolean value
                             // if value is ifdef, skip if result is false
@@ -162,12 +163,12 @@ class PreProcessor {
     private function skipIf(array $lines, bool $skipAll = false): array {
         while (!empty($lines)) {
             $line = array_shift($lines);
-            if (count($line) < 2) {
+            if (empty($line) || empty($line->next)) {
                 continue;
             }
-            if ($line[0]->type === Token::PUNCTUATOR && $line[0]->value === '#') {
-                if ($line[1]->type === Token::IDENTIFIER) {
-                    switch ($line[1]->value) {
+            if ($line->type === Token::PUNCTUATOR && $line->value === '#') {
+                if ($line->next->type === Token::IDENTIFIER) {
+                    switch ($line->next->value) {
                         case 'if':
                         case 'ifdef':
                             $lines = $this->skipIf($lines, true);
@@ -178,8 +179,7 @@ class PreProcessor {
                             if ($skillAll) {
                                 break;
                             }
-                            array_shift($line);
-                            array_shift($line);
+                            $line = $line->next->next;
                             if ($this->evaluateIf($line)) {
                                return $lines;
                             }
@@ -194,7 +194,7 @@ class PreProcessor {
                         case 'undef':
                             break;
                         default:
-                            var_dump($line[1]->value);
+                            var_dump($line->next->value);
                             die("Unknown directive 2");
                     }
                 }
@@ -204,43 +204,43 @@ class PreProcessor {
     }
 
     private function findAndParse(string $header, string $contextDir): array {
+        if ($header === 'stdio.h') {
+            $header = __DIR__ .  '/../include/stdio.h';
+        }
         $contextDir = rtrim($contextDir, '/');
         $file = $this->findHeaderFile($header, $contextDir);
-        if (!isset($this->headers[$file])) {
-            $code = file_get_contents($file);
-            $this->headers[$file] = $this->parser->parse($file, $code);
-        }
-        return $this->headers[$file];
+        $code = file_get_contents($file);
+        return $this->parser->parse($file, $code);
     }
 
-    private function resolveInclude(array $args, string $contextFile): array {
+    private function resolveInclude(?Token $arg, string $contextFile): array {
         $contextDir = dirname($contextFile);
-        if (empty($args)) {
+        if (empty($arg)) {
             throw new \LogicException("Empty include declaration");
         }
-        $type = array_shift($args);
+        $type = $arg;
         if ($type->type === Token::LITERAL) {
             $file = $type->value;
             if (!empty($args)) {
                 throw new \LogicException("extra tokens in #include directive");
             }
             return $this->findAndParse($file, $contextDir);
-        } elseif ($type->type === Token::PUNCTUATOR && $type->value === '<' && !empty($args)) {
+        } elseif ($type->type === Token::PUNCTUATOR && $type->value === '<' && !empty($arg->next)) {
             // handle <> include:
             $file = '';
-            while (!empty($args)) {
-                $node = array_shift($args);
-                if ($node->type === Token::PUNCTUATOR && $node->value === '>') {
+            while (!empty($arg->next)) {
+                $arg = $arg->next;
+                if ($arg->type === Token::PUNCTUATOR && $arg->value === '>') {
                     break;
                 }
-                $file .= $node->value;
+                $file .= $arg->value;
             }
             if (!empty($args)) {
                 throw new \LogicException("extra tokens in #include directive");
             }
             return $this->findAndParse($file, $contextDir);
         }
-        var_dump($type, $args);
+        var_dump($type, $arg);
         throw new \LogicException("Illegal include directive");
     }
 

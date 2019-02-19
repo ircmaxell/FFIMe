@@ -14,58 +14,108 @@ class Compiler {
         $this->preprocessor = $preprocessor ?? new PreProcessor($this->context);
     }
 
-    public function compile(string $header): string {
+    public function compile(string $header): array {
         $tokens = $this->preprocessor->process($header);
         $tokens = $this->expandMacros($tokens);
-        return $this->emit($tokens);
+        $tokens = $this->normalizeLines($tokens);
+        return $tokens;
     }
 
-    private function emit(array $tokens): string {
+    private function normalizeLines(array $tokens): array {
+        $result = [];
+        $length = count($tokens);
+        $i = 0;
+        while ($i < $length) {
+            $line = $tokens[$i++];
+            if (empty($line)) {
+                continue;
+            }
+            $head = $prev = $line;
+            do {
+                // find next ';'
+                while (!is_null($line)) {
+                    if ($line->type === Token::PUNCTUATOR && $line->value === ';') {
+                        $result[] = $head;
+                        $old = $line;
+                        $head = $line = $line->next;
+                        $prev = $old->next = null;
+                    } else {
+                        $prev = $line;
+                        $line = $line->next;
+                    }
+                }
+                if (!is_null($head)) {
+                    // spanning lines
+                    while ($i < $length) {
+
+                        $newline = $tokens[$i++];
+                        if (empty($newline)) {
+                            continue;
+                        }
+                        if (!is_null($prev)) {
+                            $prev->next = $newline;
+                        }
+                        $line = $newline;
+                        break;
+                    }
+                    if (empty($line)) {
+                        throw new \LogicException("Syntax error: missing ;");
+                    }
+                } else {
+                    break;
+                }
+            } while(true);
+        }
+        return $result;
+    }
+
+    public function emit(array $tokens): string {
         $result = '';
         foreach ($tokens as $line) {
-            foreach ($line as $token) {
-                if ($token->type === Token::LITERAL) {
-                    $result .= '"' . $token->value . '"';
+            while (!is_null($line)) {
+                if ($line->type === Token::LITERAL) {
+                    $result .= '"' . $line->value . '"';
+                } elseif ($line->type === Token::IDENTIFIER && $line->value === 'const') {
+                    //pass (don't emit consts)
                 } else {
-                    $result .= ' ' . $token->value;
+                    $result .= ' ' . $line->value;
                 }
+                $line = $line->next;
             }
             $result .= "\n";
         }
         return $result;
     }
 
-    private function expandMacros(array $tokens): array {
+    private function expandMacros(array $lines): array {
         do {
-            $tokenPos = 0;
-            $numberOfTokens = count($tokens);
+            $linePos = 0;
+            $numberOfLines = count($lines);
             $result = [];
             $rerun = false;
-            while ($tokenPos < $numberOfTokens) {
-                $line = $tokens[$tokenPos++];
-                $resultLine = [];
+            while ($linePos < $numberOfLines) {
+                $line = $lines[$linePos++];
+                $resultLine = $first = new Token(0, '', 'internal');
 
-                $linePos = 0;
-                $lineLength = count($line);
-                while ($linePos < $lineLength) {
-                    $token = $line[$linePos++];
-                    if ($token->type === Token::IDENTIFIER) {
-                        if ($this->context->isDefined($token->value)) {
-                            $resultLine = array_merge($resultLine, $this->context->expand($token->value));
-                            $rerun = true;
+                while (!empty($line)) {
+                    if ($line->type === Token::IDENTIFIER) {
+                        if ($this->context->isDefined($line->value)) {
+                            $tmp = $this->context->expand($token->value);
+                            $resultLine->next = $tmp;
+                            $resultLine = $tmp->tail();
                         } else {
-                            // emit token directly
-                            $resultLine[] = $token;
+                            $resultLine = $resultLine->next = $line;
                         }
                     } else {
-                        $resultLine[] = $token;
+                        $resultLine = $resultLine->next = $line;
                     }
+                    $line = $line->next;
                 }
-                $result[] = $resultLine;
+                $result[] = $first->next;
             }
-            $tokens = $result;
+            $lines = $result;
         } while ($rerun);
-        return $tokens;
+        return $lines;
     }
 
 }

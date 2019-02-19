@@ -18,8 +18,8 @@ class Tokenizer {
         return $result;
     }
 
-    protected function tokenizeLine(string $file, string $line): array {
-        $result = [];
+    protected function tokenizeLine(string $file, string $line): ?Token {
+        $result = $first = new Token(0, '', $file);
         $length = strlen($line);
         $pos = 0;
         while ($pos < $length) {
@@ -30,7 +30,7 @@ class Tokenizer {
                 while ($pos < $length && (ctype_alnum($line[$pos]) || $line[$pos] === '_')) {
                     $buffer .= $line[$pos++];
                 }
-                $result[] = new Token(Token::IDENTIFIER, $buffer, $file);
+                $result = $result->next = new Token(Token::IDENTIFIER, $buffer, $file);
             } elseif ($char === ' ' || $char === "\t" || $char === "\0") {
                 // white space, ignore
             } elseif (ctype_digit($char) || ($char === '.' && $pos < $length && ctype_digit($line[$pos]))) {
@@ -52,7 +52,7 @@ class Tokenizer {
                         break;
                     }
                 }
-                $result[] = new Token(Token::NUMBER, $buffer, $file);
+                $result = $result->next = new Token(Token::NUMBER, $buffer, $file);
             } elseif ($char === '"') {
                 $buffer = '';
                 while ($pos < $length) {
@@ -67,50 +67,50 @@ class Tokenizer {
                         $buffer .= $char;
                     }
                 }
-                $result[] = new Token(Token::LITERAL, $buffer, $file);
+                $result = $result->next = new Token(Token::LITERAL, $buffer, $file);
             } elseif (ctype_punct($char)) {
                 if ($char === '.' && $pos + 1 < $length && $line[$pos] === '.' && $line[$pos + 1] === '.') {
                     // special case for ... token
-                    $result[] = new Token(Token::PUNCTUATOR, '...', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, '...', $file);
                     $pos = $pos + 2;
                 } elseif ($char === '@' || $char === '$' || $char === '`') {
-                    $result[] = new Token(Token::OTHER, $char, $file);
+                    $result = $result->next = new Token(Token::OTHER, $char, $file);
                 } elseif ($char === '#' && $pos < $length && $line[$pos] === '#') {
-                    $result[] = new Token(Token::PUNCTUATOR, '##', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, '##', $file);
                     $pos++;
                 } elseif ($char === '<' && $pos < $length && $line[$pos] === '%') {
                     // Digraph
-                    $result[] = new Token(Token::PUNCTUATOR, '{', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, '{', $file);
                     $pos++;
                 } elseif ($char === '%' && $pos < $length && $line[$pos] === '>') {
                     // Digraph
-                    $result[] = new Token(Token::PUNCTUATOR, '}', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, '}', $file);
                     $pos++;
                 } elseif ($char === '<' && $pos < $length && $line[$pos] === ':') {
                     // Digraph
-                    $result[] = new Token(Token::PUNCTUATOR, '[', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, '[', $file);
                     $pos++;
                 } elseif ($char === ':' && $pos < $length && $line[$pos] === '>') {
                     // Digraph
-                    $result[] = new Token(Token::PUNCTUATOR, ']', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, ']', $file);
                     $pos++;
                 } elseif ($char === '%' && $pos + 2 < $length && $line[$pos] === ':' && $line[$pos + 1] === '%' && $line[$pos + 2] === ':') {
                     // Digraph
-                    $result[] = new Token(Token::PUNCTUATOR, '##', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, '##', $file);
                     $pos = $pos + 3;
                 } elseif ($char === '%' && $pos < $length && $line[$pos] === ':') {
                     // Digraph
-                    $result[] = new Token(Token::PUNCTUATOR, '#', $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, '#', $file);
                     $pos++;
                 } else {
-                    $result[] = new Token(Token::PUNCTUATOR, $char, $file);
+                    $result = $result->next = new Token(Token::PUNCTUATOR, $char, $file);
                 }
             } else {
                 var_dump($char, ord($char), ord("\n"));
                 die("Unknown Character");
             }
         }
-        return $result;
+        return $first->next;
     }
 
 
@@ -126,10 +126,20 @@ class Token {
     public int $type;
     public string $value;
     public string $file;
+    public ?Token $next;
 
-    public function __construct(int $type, string $value, string $file) {
+    public function __construct(int $type, string $value, string $file, ?Token $next = null) {
         $this->type = $type;
         $this->value = $value;
         $this->file = $file;
+        $this->next = $next;
+    }
+
+    public function tail(): self {
+        $node = $this;
+        while (!is_null($node->next)) {
+            $node = $node->next;
+        }
+        return $node;
     }
 }

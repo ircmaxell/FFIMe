@@ -7,8 +7,8 @@ namespace FFIMe;
 class Context {
     private array $definitions = [];
 
-    public function define(string $identifier, array $tokens): void {
-        $this->definitions[$identifier] = $tokens;
+    public function define(string $identifier, ?Token $token): void {
+        $this->definitions[$identifier] = $token;
     }
 
     public function undefine(string $identifier): void {
@@ -19,7 +19,7 @@ class Context {
         return isset($this->definitions[$identifier]);
     }
 
-    public function expand(string $identifier): array {
+    public function expand(string $identifier): ?Token {
         if (!$this->isDefined($identifier)) {
             return [];
         }
@@ -27,18 +27,18 @@ class Context {
     }
 
     public function getValue(string $identifier): mixed {
-        return $this->evaluate(...$this->expand($identifier));
+        return $this->evaluate($this->expand($identifier));
     }
 
-    public function evaluate(Token ...$expr): Token {
+    public function evaluate(?Token $expr): Token {
         if (empty($expr)) {
             return new Token(Token::NUMBER, '0', 'computed');
-        } elseif (count($expr) === 1) {
+        } elseif ($this->count($expr) === 1) {
             // special case
-            switch ($expr[0]->type) {
+            switch ($expr->type) {
                 case Token::IDENTIFIER:
-                    if ($this->isDefined($expr[0]->value)) {
-                        return $this->evaluate(...$this->definitions[$expr[0]->value]);
+                    if ($this->isDefined($expr->value)) {
+                        return $this->evaluate(...$this->definitions[$expr->value]);
                     }
                     return new Token(Token::NUMBER, '0', 'computed');
             }
@@ -47,6 +47,15 @@ class Context {
 
 
         var_dump($expr);
+    }
+
+    private function count(?Token $expr): int {
+        $count = 0;
+        while (!empty($expr)) {
+            $count++;
+            $expr = $expr->next;
+        }
+        return $count;
     }
 
 

@@ -31,13 +31,19 @@ class FFIMe {
 
     public function __call(string $name, array $args) {
         switch (count($args)) {
-            case 0:
-                return $this->ffi->$name();
-            case 1:
-                return $this->ffi->$name($args[0]);
+            case 2:
+                return $this->ffi->$name($args[0], $args[1]);
             default:
                 return $this->ffi->$name(...$args);
         }
+    }
+
+    public function stringToCData(string $data): \FFI\CData {
+        $length = strlen($data) + 1;
+        $string = $this->ffi->new('char[' . $length . ']');
+        \FFI::memcpy($string, $data, $length - 1);
+        $string[$length - 1] = 0;
+        return $string;
     }
 
     public function defineInt(string $identifier, int $value): void {
@@ -56,7 +62,8 @@ class FFIMe {
         if ($this->built) {
             throw new \RuntimeException("Already built, cannot include twice");
         }
-        $this->code .= $this->compiler->compile($header);
+        $tokens = $this->compiler->compile($header);
+        $this->code .= $this->compiler->emit($tokens);
         return $this;
     }
 
