@@ -16,8 +16,19 @@ class Parser {
         $lines = preg_split("(\n|\r|\r\n)", $code);
         $lines = $this->mergeContinuedLines($lines);
         $lines = $this->stripComments($lines);
+        $lines = $this->stripEmptyLines($lines);
         $tokens = $this->tokenizer->tokenize($file, ...$lines);
         return $tokens;
+    }
+
+    private function stripEmptyLines(array $lines): array {
+        $new = [];
+        foreach ($lines as $line) {
+            if (!empty($line)) {
+                $new[] = $line;
+            }
+        }
+        return $new;
     }
 
     private function mergeContinuedLines(array $lines): array {

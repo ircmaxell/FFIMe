@@ -12,9 +12,9 @@ Usage:
 
 ```php
 $libc = new FFIMe\FFIMe("/lib/x86_64-linux-gnu/libc.so.6");
-$libc->include("/usr/include/printf.h")->build();
+$libc->include("printf.h")->build();
 
 $libc->printf("test");
 ```
 
-Note: This does not work yet, except for certain relatively simple header files (such as those used by libjit, libgccjit, etc). Much more support for operators is needed.
+This should now work for the majority of header files. Looking at some of the code, specifically the compiler, there is quite a bit of hard coding. So I don't expect every file to work out of the box. If you find a header file that doesn't work, just open a bug and we'll take a look.

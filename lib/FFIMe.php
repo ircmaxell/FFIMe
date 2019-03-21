@@ -16,9 +16,16 @@ class FFIMe {
     private \FFI $ffi;
     private bool $built = false;
 
-    public function __construct(string $sharedObjectFile) {
-        $this->sofile = $sharedObjectFile;
-        $this->context = new Context;
+    
+
+    const DEFAULT_SO_SEARCH_PATHS = [
+        '/usr/local/lib',
+        '/usr/lib',
+    ];
+
+    public function __construct(string $sharedObjectFile, array $headerSearchPaths = [], array $soSearchPaths = self::DEFAULT_SO_SEARCH_PATHS) {
+        $this->context = new Context($headerSearchPaths);
+        $this->sofile = $this->findSOFile($sharedObjectFile, $soSearchPaths);
         $this->compiler = new Compiler($this->context);
     }
 
@@ -71,9 +78,23 @@ class FFIMe {
         if ($this->built) {
             return $this;
         }
+        file_put_contents('debug.code', $this->code);
         $this->ffi = \FFI::cdef($this->code, $this->sofile);
         $this->built = true;
-        file_put_contents(__DIR__ . '/../../result.h', $this->code);
         return $this;
+    }
+    
+    private function findSOFile(string $filename, array $searchPaths): string {
+        if (is_file($filename)) {
+            // no searching needed
+            return $filename; 
+        }
+        foreach ($searchPaths as $path) {
+            $test = $path . '/' . $filename;
+            if (file_exists($test)) {
+                return $test;
+            }
+        }
+        throw new \LogicException('Could not find shared object file ' . $filename);
     }
 }

@@ -33,6 +33,11 @@ class Tokenizer {
                 $result = $result->next = new Token(Token::IDENTIFIER, $buffer, $file);
             } elseif ($char === ' ' || $char === "\t" || $char === "\0") {
                 // white space, ignore
+                $buffer = $char;
+                while ($pos < $length && ($line[$pos] === ' ' || $line[$pos] === "\t" || $line[$pos] === "\0")) {
+                    $buffer .= $line[$pos++];
+                }
+                $result = $result->next = new Token(Token::WHITESPACE, $buffer, $file);
             } elseif (ctype_digit($char) || ($char === '.' && $pos < $length && ctype_digit($line[$pos]))) {
                 // Numeric literal
                 $buffer = $char;
@@ -68,6 +73,39 @@ class Tokenizer {
                     }
                 }
                 $result = $result->next = new Token(Token::LITERAL, $buffer, $file);
+            } elseif ($char === "'") {
+                $buffer = '';
+                while ($pos < $length) {
+                    $char = $line[$pos++];
+                    if ($char === "'") {
+                        break;
+                    } elseif ($char === '\\' && $pos < $length) {
+                        // eat both characters since it's an escape
+                        $char = $line[$pos++];
+                        $buffer .= '\\' . $char;
+                    } else {
+                        $buffer .= $char;
+                    }
+                }
+                $value = chr(0);
+                if (strlen($buffer) > 1 && $buffer[0] === '\\') {
+                    // convert character into integer
+                    switch ($buffer[1]) {
+                        case '0':
+                            $value = chr(0);
+                            break;
+                        case 'x':
+                            $value = chr(intval(substr($buffer, 2), 16));
+                            break;
+                        default: 
+                            throw new \LogicException("Unknown character literal escape sequence: " . var_export($buffer, true));
+                    }
+                } elseif (strlen($buffer) === 1) {
+                    $value = $buffer;
+                } else {
+                    throw new \LogicException("Syntax error: unexpected illegal string literal found '$buffer' in $file at position $pos");
+                }
+                $result = $result->next = new Token(Token::LITERAL, $value, $file);
             } elseif (ctype_punct($char)) {
                 if ($char === '.' && $pos + 1 < $length && $line[$pos] === '.' && $line[$pos + 1] === '.') {
                     // special case for ... token
@@ -116,30 +154,3 @@ class Tokenizer {
 
 }
 
-class Token {
-    const IDENTIFIER = 1;
-    const NUMBER = 2;
-    const LITERAL = 3;
-    const PUNCTUATOR = 4;
-    const OTHER = 5;
-
-    public int $type;
-    public string $value;
-    public string $file;
-    public ?Token $next;
-
-    public function __construct(int $type, string $value, string $file, ?Token $next = null) {
-        $this->type = $type;
-        $this->value = $value;
-        $this->file = $file;
-        $this->next = $next;
-    }
-
-    public function tail(): self {
-        $node = $this;
-        while (!is_null($node->next)) {
-            $node = $node->next;
-        }
-        return $node;
-    }
-}
