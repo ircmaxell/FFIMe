@@ -74,11 +74,14 @@ class FFIMe {
         return $this;
     }
 
+    public function getCode(): string {
+        return $this->code;
+    }
+
     public function build(): self {
         if ($this->built) {
             return $this;
         }
-        file_put_contents('debug.code', $this->code);
         $this->ffi = \FFI::cdef($this->code, $this->sofile);
         $this->built = true;
         return $this;
