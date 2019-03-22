@@ -67,7 +67,7 @@ abstract class CParserAbstract
      * The following members are part of the parser state:
      */
     /** @var Lexer Lexer that is used when parsing */
-    protected Lexer $lexer;
+    protected CLexer $lexer;
     /** @var mixed Temporary value containing the result of last semantic action (reduction) */
     protected $semValue;
     /** @var array Semantic value stack (contains values of tokens and semantic action results) */
@@ -85,14 +85,14 @@ abstract class CParserAbstract
     /** @var int Error state, used to avoid error floods */
     protected $errorState;
 
-    protected Scope $scope;
+    protected CScope $scope;
 
     /**
      * Initialize $reduceCallbacks map.
      */
     abstract protected function initReduceCallbacks();
 
-    public function __construct(Lexer $lexer) {
+    public function __construct(CLexer $lexer) {
         $this->lexer = $lexer;
         $this->initReduceCallbacks();
     }

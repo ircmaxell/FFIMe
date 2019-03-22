@@ -4,16 +4,16 @@ namespace FFIMe;
 
 use FFIMe\Node;
 
-class Lexer
+class CLexer
 {
 
     private array $tokens;
     private int $tokenPos = -1;
     private ?Token $currentToken = null;
     private array $toEmit = [];
-    private Scope $scope;
+    private CScope $scope;
 
-    public function begin(Scope $scope, array $tokens): void {
+    public function begin(CScope $scope, array $tokens): void {
         $this->tokens = $tokens;
         $this->tokenPos = -1;
         $this->currentToken = null;

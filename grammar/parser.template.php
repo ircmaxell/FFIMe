@@ -13,7 +13,7 @@ use FFIMe\Node;
 
 /* This is an automatically GENERATED file, which should not be manually edited.
  */
-class CParser extends ParserAbstract
+class CParser extends CParserAbstract
 {
     protected $tokenToSymbolMapSize = #(YYMAXLEX);
     protected $actionTableSize      = #(YYLAST);

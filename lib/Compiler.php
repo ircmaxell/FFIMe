@@ -13,7 +13,7 @@ class Compiler {
     public function __construct(Context $context = null, PreProcessor $preprocessor = null, CParser $cparser = null) {
         $this->context = $context ?? new Context;
         $this->preprocessor = $preprocessor ?? new PreProcessor($this->context);
-        $this->cparser = $cparser ?? new CParser(new Lexer);
+        $this->cparser = $cparser ?? new CParser(new CLexer);
     }
 
     public function compile(string $header): array {
