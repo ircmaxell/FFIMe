@@ -1,0 +1,82 @@
+<?php
+
+namespace FFIMe;
+
+/* GENERATED file based on grammar/grammar.y */
+final class CTokens
+{
+    const T_YYERRTOK = 256;
+    const T_IDENTIFIER = 257;
+    const T_I_CONSTANT = 258;
+    const T_F_CONSTANT = 259;
+    const T_STRING_LITERAL = 260;
+    const T_FUNC_NAME = 261;
+    const T_SIZEOF = 262;
+    const T_PTR_OP = 263;
+    const T_INC_OP = 264;
+    const T_DEC_OP = 265;
+    const T_LEFT_OP = 266;
+    const T_RIGHT_OP = 267;
+    const T_LE_OP = 268;
+    const T_GE_OP = 269;
+    const T_EQ_OP = 270;
+    const T_NE_OP = 271;
+    const T_AND_OP = 272;
+    const T_OR_OP = 273;
+    const T_MUL_ASSIGN = 274;
+    const T_DIV_ASSIGN = 275;
+    const T_MOD_ASSIGN = 276;
+    const T_ADD_ASSIGN = 277;
+    const T_SUB_ASSIGN = 278;
+    const T_LEFT_ASSIGN = 279;
+    const T_RIGHT_ASSIGN = 280;
+    const T_AND_ASSIGN = 281;
+    const T_XOR_ASSIGN = 282;
+    const T_OR_ASSIGN = 283;
+    const T_TYPEDEF_NAME = 284;
+    const T_ENUMERATION_CONSTANT = 285;
+    const T_TYPEDEF = 286;
+    const T_EXTERN = 287;
+    const T_STATIC = 288;
+    const T_AUTO = 289;
+    const T_REGISTER = 290;
+    const T_INLINE = 291;
+    const T_CONST = 292;
+    const T_RESTRICT = 293;
+    const T_VOLATILE = 294;
+    const T_BOOL = 295;
+    const T_CHAR = 296;
+    const T_SHORT = 297;
+    const T_INT = 298;
+    const T_LONG = 299;
+    const T_SIGNED = 300;
+    const T_UNSIGNED = 301;
+    const T_FLOAT = 302;
+    const T_DOUBLE = 303;
+    const T_VOID = 304;
+    const T_COMPLEX = 305;
+    const T_IMAGINARY = 306;
+    const T_STRUCT = 307;
+    const T_UNION = 308;
+    const T_ENUM = 309;
+    const T_ELLIPSIS = 310;
+    const T_CASE = 311;
+    const T_DEFAULT = 312;
+    const T_IF = 313;
+    const T_ELSE = 314;
+    const T_SWITCH = 315;
+    const T_WHILE = 316;
+    const T_DO = 317;
+    const T_FOR = 318;
+    const T_GOTO = 319;
+    const T_CONTINUE = 320;
+    const T_BREAK = 321;
+    const T_RETURN = 322;
+    const T_ALIGNAS = 323;
+    const T_ALIGNOF = 324;
+    const T_ATOMIC = 325;
+    const T_GENERIC = 326;
+    const T_NORETURN = 327;
+    const T_STATIC_ASSERT = 328;
+    const T_THREAD_LOCAL = 329;
+}

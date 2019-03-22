@@ -8,15 +8,17 @@ class Compiler {
 
     private PreProcessor $preprocessor;
     public Context $context;
+    private CParser $cparser;
 
-    public function __construct(Context $context = null, PreProcessor $preprocessor = null) {
+    public function __construct(Context $context = null, PreProcessor $preprocessor = null, CParser $cparser = null) {
         $this->context = $context ?? new Context;
         $this->preprocessor = $preprocessor ?? new PreProcessor($this->context);
+        $this->cparser = $cparser ?? new CParser(new Lexer);
     }
 
     public function compile(string $header): array {
         $tokens = $this->preprocessor->process($header);
-        $tokens = $this->normalizeLines($tokens);
+        $ast = $this->cparser->parse($tokens);
         return $tokens;
     }
 
@@ -36,53 +38,6 @@ class Compiler {
             $result .= "\n";
         }
         return $this->cleanCode($result);
-    }
-
-    private function normalizeLines(array $tokens): array {
-        $result = [];
-        $length = count($tokens);
-        $i = 0;
-        while ($i < $length) {
-            $line = $tokens[$i++];
-            if (empty($line)) {
-                continue;
-            }
-            $head = $prev = $line;
-            do {
-                // find next ';'
-                while (!is_null($line)) {
-                    if ($line->type === Token::PUNCTUATOR && $line->value === ';') {
-                        $result[] = $head;
-                        $old = $line;
-                        $head = $line = $line->next;
-                        $prev = $old->next = null;
-                    } else {
-                        $prev = $line;
-                        $line = $line->next;
-                    }
-                }
-                if (!is_null($head)) {
-                    // spanning lines
-                    while ($i < $length) {
-                        $newline = $tokens[$i++];
-                        if (empty($newline)) {
-                            continue;
-                        }
-                        if (!is_null($prev)) {
-                            $prev->next = $newline;
-                        }
-                        $line = $newline;
-                        break;
-                    }
-                    if (empty($line)) {
-                        throw new \LogicException("Syntax error: missing ;");
-                    }
-                } else {
-                    break;
-                }
-            } while(true);
-        }
-        return $result;
     }
 
     const TYPES_TO_REMOVE = [

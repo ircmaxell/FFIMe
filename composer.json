@@ -9,8 +9,10 @@
         }
     ],
     "require": {
+        "php": ">=7.4"
     },
     "require-dev": {
+        "ircmaxell/php-yacc": "dev-master"
     },
     "autoload": {
         "psr-4": {

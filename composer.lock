@@ -1,0 +1,65 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "38219eac00ba01969d93b2455b6c59ef",
+    "packages": [],
+    "packages-dev": [
+        {
+            "name": "ircmaxell/php-yacc",
+            "version": "dev-master",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/ircmaxell/PHP-Yacc.git",
+                "reference": "6e86fc490c2633c78650ad04c0de88a6044bef0b"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/ircmaxell/PHP-Yacc/zipball/6e86fc490c2633c78650ad04c0de88a6044bef0b",
+                "reference": "6e86fc490c2633c78650ad04c0de88a6044bef0b",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.0"
+            },
+            "require-dev": {
+                "phpstan/phpstan": ">=0.8",
+                "phpunit/phpunit": ">=6.3"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "PhpYacc\\": "lib/"
+                },
+                "files": [
+                    "lib/functions.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache 2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Anthony Ferrara",
+                    "email": "ircmaxell@php.net"
+                }
+            ],
+            "description": "A PHP YACC Parser-Generator library",
+            "time": "2018-02-28 13:17:34"
+        }
+    ],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {
+        "ircmaxell/php-yacc": 20
+    },
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {
+        "php": ">=7.4"
+    },
+    "platform-dev": []
+}
