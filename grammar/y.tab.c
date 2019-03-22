@@ -22,7 +22,7 @@ class CParser extends CParserAbstract
     protected $YYNLSTATES  = 255;
 
     protected $symbolToName = array(
-        "EOF",
+        "$EOF",
         "error",
         "IDENTIFIER",
         "I_CONSTANT",
@@ -499,7 +499,7 @@ class CParser extends CParserAbstract
     );
 
     protected $productions = array(
-        "\$start : translation_unit",
+        "$start : translation_unit",
         "primary_expression : IDENTIFIER",
         "primary_expression : constant",
         "primary_expression : string",
@@ -1550,59 +1550,4 @@ class CParser extends CParserAbstract
                  $this->semValue = new Node\Stmt\While_($this->semStack[$stackPos-(5-3)], $this->semStack[$stackPos-(5-5)], $this->startAttributeStack[$stackPos-(5-1)] + $this->endAttributes); 
             },
             257 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\DoWhile($this->semStack[$stackPos-(7-2)], $this->semStack[$stackPos-(7-5)], $this->startAttributeStack[$stackPos-(7-1)] + $this->endAttributes); 
-            },
-            258 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\For_($this->semStack[$stackPos-(6-3)], $this->semStack[$stackPos-(6-4)], null, $this->semStack[$stackPos-(6-6)], $this->startAttributeStack[$stackPos-(6-1)] + $this->endAttributes); 
-            },
-            259 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\For_($this->semStack[$stackPos-(7-3)], $this->semStack[$stackPos-(7-4)], $this->semStack[$stackPos-(7-5)], $this->semStack[$stackPos-(7-7)], $this->startAttributeStack[$stackPos-(7-1)] + $this->endAttributes); 
-            },
-            260 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\For_($this->semStack[$stackPos-(6-3)], $this->semStack[$stackPos-(6-4)], null, $this->semStack[$stackPos-(6-6)], $this->startAttributeStack[$stackPos-(6-1)] + $this->endAttributes); 
-            },
-            261 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\For_($this->semStack[$stackPos-(7-3)], $this->semStack[$stackPos-(7-4)], $this->semStack[$stackPos-(7-5)], $this->semStack[$stackPos-(7-7)], $this->startAttributeStack[$stackPos-(7-1)] + $this->endAttributes); 
-            },
-            262 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\Goto_($this->semStack[$stackPos-(3-1)], $this->startAttributeStack[$stackPos-(3-1)] + $this->endAttributes); 
-            },
-            263 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\Continue_($this->startAttributeStack[$stackPos-(2-1)] + $this->endAttributes); 
-            },
-            264 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\Break_($this->startAttributeStack[$stackPos-(2-1)] + $this->endAttributes); 
-            },
-            265 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\Return_(null, $this->startAttributeStack[$stackPos-(2-1)] + $this->endAttributes); 
-            },
-            266 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\Return_($this->semStack[$stackPos-(3-1)], $this->startAttributeStack[$stackPos-(3-1)] + $this->endAttributes); 
-            },
-            267 => function ($stackPos) {
-                 $this->semValue = array($this->semStack[$stackPos-(1-1)]); 
-            },
-            268 => function ($stackPos) {
-                 push ($this->semStack[$stackPos-(2-1)], $this->semStack[$stackPos-(2-2)]); 
-            },
-            269 => function ($stackPos) {
-                 $this->semValue = $this->semStack[$stackPos-(1-1)]; 
-            },
-            270 => function ($stackPos) {
-                 $this->semValue = $this->semStack[$stackPos-(1-1)]; 
-            },
-            271 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\Function_($this->semStack[$stackPos-(4-1)], $this->semStack[$stackPos-(4-2)], $this->semStack[$stackPos-(4-3)], $this->semStack[$stackPos-(4-4)], $this->startAttributeStack[$stackPos-(4-1)] + $this->endAttributes); 
-            },
-            272 => function ($stackPos) {
-                 $this->semValue = new Node\Stmt\Function_($this->semStack[$stackPos-(3-1)], $this->semStack[$stackPos-(3-2)], null, $this->semStack[$stackPos-(3-3)], $this->startAttributeStack[$stackPos-(3-1)] + $this->endAttributes); 
-            },
-            273 => function ($stackPos) {
-                 $this->semValue = array($this->semStack[$stackPos-(1-1)]); 
-            },
-            274 => function ($stackPos) {
-                 $this->semStack[$stackPos-(2-1)][] = $this->semStack[$stackPos-(2-2)]; $this->semValue = $this->semStack[$stackPos-(2-1)]; 
-            },
-        ];
-    }
-}
+                 $this->semValue = new Node\Stmt\DoWhile($this->semStack[$stackPos-(7-2)], $

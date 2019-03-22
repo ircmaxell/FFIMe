@@ -222,12 +222,12 @@ init_declarator
     ; 
 
 storage_class_specifier
-    : TYPEDEF               { $$ = $1; } /* identifiers must be flagged as TYPEDEF_NAME */
-    | EXTERN                { $$ = $1; }
-    | STATIC                { $$ = $1; }
-    | THREAD_LOCAL          { $$ = $1; }
-    | AUTO                  { $$ = $1; }
-    | REGISTER              { $$ = $1; }
+    : TYPEDEF               { $$ = Node\Storage\Typedef[]; } /* identifiers must be flagged as TYPEDEF_NAME */
+    | EXTERN                { $$ = Node\Storage\Extern[]; }
+    | STATIC                { $$ = Node\Storage\Static_[]; }
+    | THREAD_LOCAL          { $$ = Node\Storage\ThreadLocal[]; }
+    | AUTO                  { $$ = Node\Storage\Auto[]; }
+    | REGISTER              { $$ = Node\Storage\Register[]; }
     ;
 
 type_specifier
@@ -312,10 +312,10 @@ atomic_type_specifier
     ;
 
 type_qualifier
-    : CONST         { $$ = $1; }
-    | RESTRICT      { $$ = $1; }
-    | VOLATILE      { $$ = $1; }
-    | ATOMIC        { $$ = $1; }
+    : CONST         { $$ = Node\Qualifier\Const_[]; }
+    | RESTRICT      { $$ = Node\Qualifier\Restrict[]; }
+    | VOLATILE      { $$ = Node\Qualifier\Volatile[]; }
+    | ATOMIC        { $$ = Node\Qualifier\Restrict[]; }
     ;
 
 function_specifier
@@ -345,9 +345,9 @@ direct_declarator
     | direct_declarator '[' type_qualifier_list assignment_expression ']'
     | direct_declarator '[' type_qualifier_list ']'
     | direct_declarator '[' assignment_expression ']'
-    | direct_declarator '(' parameter_type_list ')'
-    | direct_declarator '(' ')'
-    | direct_declarator '(' identifier_list ')'
+    | direct_declarator '(' parameter_type_list ')'                                 { $$ = Node\Declaration\Function_[$1, $3]; }
+    | direct_declarator '(' ')'                                                     { $$ = Node\Declaration\Function_[$1, []]; }
+    | direct_declarator '(' identifier_list ')'                                     { $$ = Node\Declaration\Function_[$1, $3]; }
     ;
 
 pointer

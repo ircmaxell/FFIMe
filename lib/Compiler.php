@@ -8,12 +8,12 @@ class Compiler {
 
     private PreProcessor $preprocessor;
     public Context $context;
-    private CParser $cparser;
+    private CParserAbstract $cparser;
 
-    public function __construct(Context $context = null, PreProcessor $preprocessor = null, CParser $cparser = null) {
+    public function __construct(Context $context = null, PreProcessor $preprocessor = null, CParserAbstract $cparser = null) {
         $this->context = $context ?? new Context;
         $this->preprocessor = $preprocessor ?? new PreProcessor($this->context);
-        $this->cparser = $cparser ?? new CParser(new CLexer);
+        $this->cparser = $cparser ?? new CParserYacc(new CLexer);
     }
 
     public function compile(string $header): array {
