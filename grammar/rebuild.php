@@ -32,7 +32,7 @@ $generator->generate(
     new Context('grammar.y', $debugFile, true),
     $grammarCode,
     file_get_contents(__DIR__ . '/parser.template.php'),
-    __DIR__ . '/../lib/CParser.php'
+    __DIR__ . '/../lib/CParserPHP.php'
 );
 
 $generator->generate(
@@ -46,13 +46,11 @@ $tmpGrammar = __DIR__ . '/tmp_grammar.y';
 file_put_contents($tmpGrammar, $grammarCode);
 
 $command = 'kmyacc -t -v -L php -m ' . escapeshellarg(__DIR__ . '/parser.template.php') . ' -p CParser ' . escapeshellarg($tmpGrammar) . ' 2>&1';
-echo "Executing `$command`\n";
 $out = trim(shell_exec($command));
-echo "Output: \"$output\"\n";
 
 $resultCode = file_get_contents(__DIR__ . '/tmp_grammar.php');
 
-$resultCode = str_replace(' CParser ', ' CParserYacc ', $resultCode);
+$resultCode = str_replace(' CParserPHP ', ' CParserYacc ', $resultCode);
 
 file_put_contents(__DIR__ . '/../lib/CParserYacc.php', $resultCode);
 

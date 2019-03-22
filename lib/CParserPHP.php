@@ -7,7 +7,7 @@ use FFIMe\Node;
 
 /* This is an automatically GENERATED file, which should not be manually edited.
  */
-class CParserYacc extends CParser
+class CParserPHP extends CParser
 {
     protected $tokenToSymbolMapSize = 330;
     protected $actionTableSize      = 528;
@@ -499,7 +499,7 @@ class CParserYacc extends CParser
     );
 
     protected $productions = array(
-        "start : translation_unit",
+        "\$start : translation_unit",
         "primary_expression : IDENTIFIER",
         "primary_expression : constant",
         "primary_expression : string",
