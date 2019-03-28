@@ -4,57 +4,54 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#composer-lock-the-lock-file",
         "This file is @generated automatically"
     ],
-    "content-hash": "38219eac00ba01969d93b2455b6c59ef",
-    "packages": [],
-    "packages-dev": [
+    "content-hash": "f4a5498e1aa737ad1177fba82d0ab790",
+    "packages": [
         {
-            "name": "ircmaxell/php-yacc",
+            "name": "ircmaxell/php-c-parser",
             "version": "dev-master",
             "source": {
                 "type": "git",
-                "url": "https://github.com/ircmaxell/PHP-Yacc.git",
-                "reference": "6e86fc490c2633c78650ad04c0de88a6044bef0b"
+                "url": "https://github.com/ircmaxell/php-c-parser.git",
+                "reference": "817f7faea5c83b0167bb9d93d2620ee0c9d2ec1f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/PHP-Yacc/zipball/6e86fc490c2633c78650ad04c0de88a6044bef0b",
-                "reference": "6e86fc490c2633c78650ad04c0de88a6044bef0b",
+                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/817f7faea5c83b0167bb9d93d2620ee0c9d2ec1f",
+                "reference": "817f7faea5c83b0167bb9d93d2620ee0c9d2ec1f",
                 "shasum": ""
             },
             "require": {
-                "php": ">=7.0"
+                "php": ">=7.4"
             },
             "require-dev": {
-                "phpstan/phpstan": ">=0.8",
-                "phpunit/phpunit": ">=6.3"
+                "ircmaxell/php-yacc": "dev-master",
+                "phpunit/phpunit": "^8.0"
             },
             "type": "library",
             "autoload": {
                 "psr-4": {
-                    "PhpYacc\\": "lib/"
-                },
-                "files": [
-                    "lib/functions.php"
-                ]
+                    "PHPCParser\\": "lib/"
+                }
             },
             "notification-url": "https://packagist.org/downloads/",
             "license": [
-                "Apache 2.0"
+                "MIT"
             ],
             "authors": [
                 {
                     "name": "Anthony Ferrara",
-                    "email": "ircmaxell@php.net"
+                    "email": "ircmaxell@gmail.com"
                 }
             ],
-            "description": "A PHP YACC Parser-Generator library",
-            "time": "2018-02-28 13:17:34"
+            "description": "Parse C when using PHP",
+            "time": "2019-03-28 18:37:22"
         }
     ],
+    "packages-dev": [],
     "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {
-        "ircmaxell/php-yacc": 20
+        "ircmaxell/php-c-parser": 20
     },
     "prefer-stable": false,
     "prefer-lowest": false,
