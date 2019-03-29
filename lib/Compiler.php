@@ -314,7 +314,7 @@ enum_decl:
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
         $return[] = '    public function equals(' . $name . ' $other): bool { return $this->data == $other->data; }';
         $return[] = '    public function addr(): ' . $name . '_ptr { return new '. $name . '_ptr(FFI::addr($this->data)); }';
-        if (substr($name, -4) === '_ptr') {
+        if (substr($name, -4) === '_ptr' && $name !== 'void_ptr') {
             $prior = substr($name, 0, -4);
             $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
         }
