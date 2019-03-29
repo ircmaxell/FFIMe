@@ -13,9 +13,11 @@ use PHPCParser\Node\Stmt\ValueStmt\Expr;
 class Compiler {
 
     private array $defines;
+    private array $resolver; 
 
     public function compile(string $soFile, array $decls, array $defines, string $className): string {
         $this->defines = $defines;
+        $this->resolver = $this->buildResolver($decls);
         $parts = explode('\\', $className);
         $class = [];
         if (isset($parts[1])) {
@@ -51,6 +53,9 @@ class Compiler {
             $class = array_merge($class, $this->compileDecl($decl));
         }
         $class[] = "}\n";
+        $this->compileDeclClassImpl('void_ptr', 'void*', $className);
+        $this->compileDeclClassImpl('void_ptr_ptr', 'void**', $className);
+        $this->compileDeclClassImpl('void_ptr_ptr_ptr', 'void***', $className);
         foreach ($decls as $decl) {
             $class = array_merge($class, $this->compileDeclClass($decl, $className));
         }
@@ -73,8 +78,8 @@ class Compiler {
     }
 
     protected function compileConstructor(): string {
-        return '    public function __construct() {
-        $this->ffi = FFI::cdef(self::HEADER_DEF, self::SOFILE);
+        return '    public function __construct(string $pathToSoFile = self::SOFILE) {
+        $this->ffi = FFI::cdef(self::HEADER_DEF, $pathToSoFile);
     }';
     }
 
@@ -288,7 +293,8 @@ enum_decl:
     public function compileDeclClass(Decl $decl, string $className): array {
         $return = [];
         if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
-            for ($i = 0; $i <= 4; $i++) {
+            $return = array_merge($return, $this->compileDeclClassImpl($decl->name, $decl->name, $className));
+            for ($i = 1; $i <= 4; $i++) {
                 $return = array_merge($return, $this->compileDeclClassImpl($decl->name . str_repeat('_ptr', $i), $decl->name . str_repeat('*', $i), $className));
             }
         }
@@ -300,7 +306,11 @@ enum_decl:
         $return = [];
         $return[] = "class {$name} implements i{$className} {";
         $return[] = '    private FFI\CData $data;';
-        $return[] = '    public function __construct(FFI\CData $data) { $this->data = $data; }';
+        if (!isset($this->resolver[$name])) {
+            $return[] = '    public function __construct(FFI\CData $data) { $this->data = $data; }';
+        } else {
+            $return[] = '    public function __construct($data) { $tmp = FFI::new(' . var_export($this->resolver[$name], true) . '); $tmp = $data; $this->data = $tmp; }';
+        }
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
         $return[] = '    public function equals(' . $name . ' $other): bool { return $this->data == $other->data; }';
         $return[] = '    public function addr(): ' . $name . '_ptr { return new '. $name . '_ptr(FFI::addr($this->data)); }';
@@ -311,6 +321,33 @@ enum_decl:
         $return[] = '    public static function getType(): string { return ' . var_export($ptrName, true) . '; }';
         $return[] = '}';
         return $return;
+    }
+
+    protected function buildResolver(array $decls): array {
+        $toLookup = [];
+        $result = [];
+        foreach ($decls as $decl) {
+            if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
+                if ($decl->type instanceof Type\TypedefType) {
+                    $toLookup[] = [$decl->name, $decl->type->name];
+                } elseif ($decl->type instanceof Type\BuiltinType) {
+                    $result[$decl->name] = $decl->type->name;
+                }
+            }
+        }
+        $runs = 1000;
+        while ($runs-- > 0 && !empty($toLookup)) {
+            do {
+                list ($name, $ref) = array_shift($toLookup);
+                if (isset($result[$ref])) {
+                    $result[$name] = $result[$ref];
+                } else {
+                    // re-queue, recursive lookup?
+                    $toLookup[] = [$name, $ref];
+                }
+            } while (!empty($toLookup));
+        }
+        return $result;
     }
 
 }
