@@ -335,17 +335,36 @@ enum_decl:
                 }
             }
         }
-        $runs = 1000;
+        /**
+         * This resolves chained typedefs. For example:
+         * typedef int A;
+         * typedef A B;
+         * typedef B C;
+         *
+         * This will resolve C=>int, B=>int, A=>int
+         * 
+         * It runs a maximum of 50 times (to prevent things that shouldn't be possible, like circular references)
+         */
+        $runs = 50;
         while ($runs-- > 0 && !empty($toLookup)) {
-            do {
-                list ($name, $ref) = array_shift($toLookup);
+            $toRemove = [];
+            for ($i = 0, $n = count($toLookup); $i < $n; $i++) {
+                list($name, $ref) = $toLookup[$i];
+
                 if (isset($result[$ref])) {
                     $result[$name] = $result[$ref];
-                } else {
-                    // re-queue, recursive lookup?
-                    $toLookup[] = [$name, $ref];
+                    $toRemove[] = $i;
                 }
-            } while (!empty($toLookup));
+            }
+            foreach ($toRemove as $index) {
+                unset($toLookup[$index]);
+            }
+            if (empty($toRemove)) {
+                // We removed nothing, so don't bother rerunning
+                break;
+            } else {
+                $toLookup = array_values($toLookup);
+            }
         }
         return $result;
     }
