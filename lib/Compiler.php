@@ -53,9 +53,9 @@ class Compiler {
             $class = array_merge($class, $this->compileDecl($decl));
         }
         $class[] = "}\n";
-        $this->compileDeclClassImpl('void_ptr', 'void*', $className);
-        $this->compileDeclClassImpl('void_ptr_ptr', 'void**', $className);
-        $this->compileDeclClassImpl('void_ptr_ptr_ptr', 'void***', $className);
+        $class = array_merge($class, $this->compileDeclClassImpl('void_ptr', 'void*', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('void_ptr_ptr', 'void**', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('void_ptr_ptr_ptr', 'void***', $className));
         foreach ($decls as $decl) {
             $class = array_merge($class, $this->compileDeclClass($decl, $className));
         }
