@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace FFIMe;
 
+use PHPCParser\Context;
 use PHPCParser\CParser;
 use PHPCParser\Node\Decl;
 
@@ -51,12 +52,14 @@ class FFIMe {
 
     private string $sofile;
 
-    private string $code = '';
+    private array $code = [];
 
     private array $ast = [];
     private array $numericDefines = [];
 
     private Compiler $compiler;
+    private Context $context;
+    private CParser $cparser;
 
     private \FFI $ffi;
     private bool $built = false;
@@ -68,19 +71,9 @@ class FFIMe {
 
     public function __construct(string $sharedObjectFile, array $headerSearchPaths = [], array $soSearchPaths = self::DEFAULT_SO_SEARCH_PATHS) {
         $this->sofile = $this->findSOFile($sharedObjectFile, $soSearchPaths);
+        $this->context = new Context($headerSearchPaths);
         $this->cparser = new CParser;
-        foreach ($headerSearchPaths as $path) {
-            $this->cparser->addSearchPath($path);
-        }
         $this->compiler = new Compiler;
-    }
-
-    public function stringToCData(string $data): \FFI\CData {
-        $length = strlen($data) + 1;
-        $string = $this->ffi->new('char[' . $length . ']');
-        \FFI::memcpy($string, $data, $length - 1);
-        $string[$length - 1] = 0;
-        return $string;
     }
 
     public function defineInt(string $identifier, int $value): void {
@@ -99,8 +92,7 @@ class FFIMe {
         if ($this->built) {
             throw new \RuntimeException("Already built, cannot include twice");
         }
-        $this->ast = array_merge($this->ast, $this->filterDeclarations($this->cparser->parse($header)->declarations));
-        $this->numericDefines = array_merge($this->numericDefines, $this->cparser->getLastContext()->getNumericDefines());
+        $this->ast = array_merge($this->ast, $this->filterDeclarations($this->cparser->parse($header, $this->context)->declarations));
         return $this;
     }
 
@@ -108,22 +100,32 @@ class FFIMe {
         return $this->code;
     }
 
-    public function codeGen(string $classname, string $filename): void {
-        file_put_contents($filename, '<?php ' . $this->compiler->compile($this->sofile, $this->ast, $this->numericDefines, $classname));
+    public function codeGen(string $className, string $filename): void {
+        $this->compile($className);
+        file_put_contents($filename, '<?php ' . $this->code[$className]);
     }
 
-    public function build() {
-        if ($this->built) {
-            return $this;
+    public function build(?string $className = null) {
+        $className = $className ?? $this->getDynamicClassName();
+        $this->compile($className);
+        eval($this->code[$className]);
+        return new $className;
+    }
+
+    public function getDynamicClassName(): string {
+        $class = 'ffime\ffime_';
+        do {
+            $class .= mt_rand(0, 99);
+        } while (class_exists($class));
+        return $class;
+    }
+
+    public function compile($className): void {
+        if (isset($this->code[$className])) {
+            return;
         }
-        $code = $this->compiler->compile($this->sofile, $this->ast, $this->numericDefines, 'A\B\C');
-        eval($code);
-        return new \A\B\C;
-        var_dump($code);
-        die();
-        $this->ffi = \FFI::cdef($this->code, $this->sofile);
-        $this->built = true;
-        return $this;
+        $this->numericDefines = $this->context->getNumericDefines();
+        $this->code[$className] = $this->compiler->compile($this->sofile, $this->ast, $this->numericDefines, $className);
     }
     
     private function findSOFile(string $filename, array $searchPaths): string {

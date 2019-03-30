@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-c-parser.git",
-                "reference": "817f7faea5c83b0167bb9d93d2620ee0c9d2ec1f"
+                "reference": "de5532e2c000986661d0b460f316436c385fe1cd"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/817f7faea5c83b0167bb9d93d2620ee0c9d2ec1f",
-                "reference": "817f7faea5c83b0167bb9d93d2620ee0c9d2ec1f",
+                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/de5532e2c000986661d0b460f316436c385fe1cd",
+                "reference": "de5532e2c000986661d0b460f316436c385fe1cd",
                 "shasum": ""
             },
             "require": {
@@ -44,7 +44,7 @@
                 }
             ],
             "description": "Parse C when using PHP",
-            "time": "2019-03-28 18:37:22"
+            "time": "2019-03-30 14:03:15"
         }
     ],
     "packages-dev": [],

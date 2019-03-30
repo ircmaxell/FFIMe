@@ -187,6 +187,9 @@ enum_decl:
             $value = str_replace(['u', 'U', 'l', 'L'], '', $expr->value);
             return (string) intval($expr->value);
         }
+        if ($expr instanceof Expr\AbstractConditionalOperator\ConditionalOperator) {
+            return '(' . $this->compileExpr($expr->cond) . ' ? ' . $this->compileExpr($expr->ifTrue) . ' : ' . $this->compileExpr($expr->ifFalse) . ')';
+        }
         if ($expr instanceof Expr\UnaryOperator) {
             switch ($expr->kind) {
                 case Expr\UnaryOperator::KIND_PLUS:
@@ -199,6 +202,48 @@ enum_decl:
                     return '(!' . $this->compileExpr($expr->expr) . ')';
                 default:
                     throw new \LogicException("Unsupported unary operator for library: " . $expr->kind);
+            }
+        }
+        if ($expr instanceof Expr\BinaryOperator) {
+            switch ($expr->kind) {
+                case Expr\BinaryOperator::KIND_ADD:
+                    return '(' . $this->compileExpr($expr->left) . ' + ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_SUB:
+                    return '(' . $this->compileExpr($expr->left) . ' - ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_MUL:
+                    return '(' . $this->compileExpr($expr->left) . ' * ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_DIV:
+                    return '(' . $this->compileExpr($expr->left) . ' / ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_REM:
+                    return '(' . $this->compileExpr($expr->left) . ' % ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_SHL:
+                    return '(' . $this->compileExpr($expr->left) . ' << ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_SHR:
+                    return '(' . $this->compileExpr($expr->left) . ' >> ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_LT:
+                    return '(' . $this->compileExpr($expr->left) . ' < ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_GT:
+                    return '(' . $this->compileExpr($expr->left) . ' > ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_LE:
+                    return '(' . $this->compileExpr($expr->left) . ' <= ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_GE:
+                    return '(' . $this->compileExpr($expr->left) . ' >= ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_EQ:
+                    return '(' . $this->compileExpr($expr->left) . ' === ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_NE:
+                    return '(' . $this->compileExpr($expr->left) . ' !== ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_BITWISE_AND:
+                    return '(' . $this->compileExpr($expr->left) . ' & ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_BITWISE_OR:
+                    return '(' . $this->compileExpr($expr->left) . ' | ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_BITWISE_XOR:
+                    return '(' . $this->compileExpr($expr->left) . ' ^ ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_LOGICAL_AND:
+                    return '(' . $this->compileExpr($expr->left) . ' && ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_LOGICAL_OR:
+                    return '(' . $this->compileExpr($expr->left) . ' || ' . $this->compileExpr($expr->right) . ')';
+                case Expr\BinaryOperator::KIND_COMMA:
+                    return $this->compileExpr($expr->left) . ', ' . $this->compileExpr($expr->right);
             }
         }
         var_dump($expr);
