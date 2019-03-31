@@ -174,11 +174,10 @@ enum_decl:
                     if ($field->value !== null) {
                         $lastValue =  $this->compileExpr($field->value);
                         $id = 0;
-                    } else {
-                        $id++;
                     }
                     // Add, since lastValue may be an expression...
                     $return[] = "    const {$field->name} = ($lastValue) + $id;";
+                    $id++;
                 }
             }
         } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl && $declaration->type instanceof Type\TagType\EnumType) {
