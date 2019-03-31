@@ -165,12 +165,20 @@ class Compiler {
 enum_decl:
             if ($declaration->fields !== null) {
                 $id = 0;
+                $lastValue = 0;
                 foreach ($declaration->fields as $field) {
                     if (isset($this->defines[$field->name])) {
                         $id++;
                         continue;
                     }
-                    $return[] = "    const {$field->name} = " . ($field->value === null ? $id++ : $this->compileExpr($field->value)) . ";";
+                    if ($field->value !== null) {
+                        $lastValue =  $this->compileExpr($field->value);
+                        $id = 0;
+                    } else {
+                        $id++;
+                    }
+                    // Add, since lastValue may be an expression...
+                    $return[] = "    const {$field->name} = ($lastValue) + $id;";
                 }
             }
         } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl && $declaration->type instanceof Type\TagType\EnumType) {
