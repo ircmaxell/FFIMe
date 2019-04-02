@@ -181,7 +181,7 @@ enum_decl:
                 }
             }
         } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl && $declaration->type instanceof Type\TagType\EnumType) {
-            $return[] = " // typedefenum {$declaration->name}";
+            $return[] = "    // typedefenum {$declaration->name}";
             $declaration = $declaration->type->decl;
             goto enum_decl;
         }
@@ -306,6 +306,9 @@ enum_decl:
             if (in_array($type->name, self::FLOAT_TYPES)) {
                 return 'float';
             }
+            if (isset($this->resolver[$type->name])) {
+                return $this->resolver[$type->name];
+            }
             return $type->name;
         } elseif ($type instanceof Type\BuiltinType && $type->name === 'void') {
             return 'void';
@@ -345,6 +348,10 @@ enum_decl:
     public function compileDeclClass(Decl $decl, string $className): array {
         $return = [];
         if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
+            if ($decl->type instanceof Type\TagType\EnumType) {
+                // don't compile enums
+                return [];
+            }
             $return = array_merge($return, $this->compileDeclClassImpl($decl->name, $decl->name, $className));
             for ($i = 1; $i <= 4; $i++) {
                 $return = array_merge($return, $this->compileDeclClassImpl($decl->name . str_repeat('_ptr', $i), $decl->name . str_repeat('*', $i), $className));
@@ -384,6 +391,8 @@ enum_decl:
                     $toLookup[] = [$decl->name, $decl->type->name];
                 } elseif ($decl->type instanceof Type\BuiltinType) {
                     $result[$decl->name] = $decl->type->name;
+                } elseif ($decl->type instanceof Type\TagType\EnumType) {
+                    $result[$decl->name] = 'int';
                 }
             }
         }
