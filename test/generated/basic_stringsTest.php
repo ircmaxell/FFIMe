@@ -6,22 +6,15 @@ use PHPUnit\Framework\TestCase;
 /**
  * Note: this is a generated file, do not edit this!!!
  */
-class basic_enumsTest extends TestCase {
+class basic_stringsTest extends TestCase {
 
     const EXPECTED = '<?php namespace %s;
 use FFI;
 interface itest {}
 class test {
     const SOFILE = \'%s\';
-    const HEADER_DEF = \'enum A {
-  A1,
-  A2,
-};
-typedef enum {
-  B1,
-  B2,
-} B;
-extern void something(B b);
+    const HEADER_DEF = \'void setFoo(char *value);
+char * getFoo();
 \';
     private FFI $ffi;
     public function __construct(string $pathToSoFile = self::SOFILE) {
@@ -67,14 +60,12 @@ extern void something(B b);
             default: return $this->ffi->$name;
         }
     }
-    // enum A
-    const A1 = (0) + 0;
-    const A2 = (0) + 1;
-    // typedefenum B
-    const B1 = (0) + 0;
-    const B2 = (0) + 1;
-    public function something(?int $p0): void {
-        $this->ffi->something($p0);
+    public function setFoo(?string $p0): void {
+        $this->ffi->setFoo($p0);
+    }
+    public function getFoo(): ?string_ {
+        $result = $this->ffi->getFoo();
+        return $result === null ? null : new string_($result);
     }
 }
 
@@ -155,16 +146,16 @@ class void_ptr_ptr_ptr implements itest {
     }
 
     public function tearDown(): void {
-        @unlink(__DIR__ . '/basic_enumsTest.result.php');
+        @unlink(__DIR__ . '/basic_stringsTest.result.php');
     }
 
     /**
-     * @textdox Test basic parsing of enums
+     * @textdox Test basic parsing of strings
      */
     public function testCodeGen() {
-        $this->lib->include(__DIR__ . '/basic_enumsTest.h');
-        $this->lib->codeGen("test\\test", __DIR__ . '/basic_enumsTest.result.php');
-        $this->assertFileExists(__DIR__ . '/basic_enumsTest.result.php');
-        $this->assertStringMatchesFormat(self::EXPECTED, trim(file_get_contents(__DIR__ . '/basic_enumsTest.result.php')));
+        $this->lib->include(__DIR__ . '/basic_stringsTest.h');
+        $this->lib->codeGen("test\\test", __DIR__ . '/basic_stringsTest.result.php');
+        $this->assertFileExists(__DIR__ . '/basic_stringsTest.result.php');
+        $this->assertStringMatchesFormat(self::EXPECTED, trim(file_get_contents(__DIR__ . '/basic_stringsTest.result.php')));
     }
 }

@@ -53,6 +53,10 @@ class Compiler {
             $class = array_merge($class, $this->compileDecl($decl));
         }
         $class[] = "}\n";
+        $class = array_merge($class, $this->compileDeclClassImpl('string_', 'char*', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('string_ptr', 'char**', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('string_ptr_ptr', 'char***', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('string_ptr_ptr_ptr', 'char****', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('void_ptr', 'void*', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('void_ptr_ptr', 'void**', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('void_ptr_ptr_ptr', 'void***', $className));
@@ -133,6 +137,9 @@ class Compiler {
             $returnType = $this->compileType($declaration->type->return);
             $params = $this->compileParameters($declaration->type->params);
             $nullableReturnType = $returnType === 'void' ? 'void' : '?' . $returnType;
+            if ($returnType === 'string') {
+                $nullableReturnType .= '_';
+            }
             $paramSignature = [];
             foreach ($params as $idx => $param) {
                 $paramSignature[] = '?' . $param . ' $p' . $idx;
@@ -149,7 +156,9 @@ class Compiler {
             }
             if ($returnType !== 'void') {
                 $return[] = '        $result = $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
-                if (in_array($returnType, self::NATIVE_TYPES)) {
+                if ($returnType === 'string') {
+                    $return[] = '        return $result === null ? null : new string_($result);';
+                } elseif (in_array($returnType, self::NATIVE_TYPES)) {
                     $return[] = '        return $result;';
                 } else {
                     $return[] = '        return $result === null ? null : new ' . $returnType . '($result);';
@@ -300,16 +309,19 @@ enum_decl:
 
     public function compileType(Type $type): string {
         if ($type instanceof Type\TypedefType) {
-            if (in_array($type->name, self::INT_TYPES)) {
+            $name = $type->name;
+restart:
+            if (in_array($name, self::INT_TYPES)) {
                 return 'int';
             }
-            if (in_array($type->name, self::FLOAT_TYPES)) {
+            if (in_array($name, self::FLOAT_TYPES)) {
                 return 'float';
             }
-            if (isset($this->resolver[$type->name])) {
-                return $this->resolver[$type->name];
+            if (isset($this->resolver[$name])) {
+                $name = $this->resolver[$name];
+                goto restart;
             }
-            return $type->name;
+            return $name;
         } elseif ($type instanceof Type\BuiltinType && $type->name === 'void') {
             return 'void';
         } elseif ($type instanceof Type\BuiltinType && in_array($type->name, self::INT_TYPES)) {
@@ -372,10 +384,20 @@ enum_decl:
         }
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
         $return[] = '    public function equals(' . $name . ' $other): bool { return $this->data == $other->data; }';
-        $return[] = '    public function addr(): ' . $name . '_ptr { return new '. $name . '_ptr(FFI::addr($this->data)); }';
+        $nameWithPtr = $name . '_ptr';
+        if ($name === 'string_') {
+            $nameWithPtr = 'string_ptr';
+        }
+        $return[] = '    public function addr(): ' . $nameWithPtr . ' { return new '. $nameWithPtr . '(FFI::addr($this->data)); }';
         if (substr($name, -4) === '_ptr' && $name !== 'void_ptr') {
             $prior = substr($name, 0, -4);
+            if ($prior === 'string') {
+                $prior = 'string_';
+            }
             $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
+        }
+        if ($name === 'string_') {
+            $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
         }
         $return[] = '    public static function getType(): string { return ' . var_export($ptrName, true) . '; }';
         $return[] = '}';

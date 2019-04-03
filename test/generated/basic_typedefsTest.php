@@ -6,22 +6,15 @@ use PHPUnit\Framework\TestCase;
 /**
  * Note: this is a generated file, do not edit this!!!
  */
-class basic_enumsTest extends TestCase {
+class basic_typedefsTest extends TestCase {
 
     const EXPECTED = '<?php namespace %s;
 use FFI;
 interface itest {}
 class test {
     const SOFILE = \'%s\';
-    const HEADER_DEF = \'enum A {
-  A1,
-  A2,
-};
-typedef enum {
-  B1,
-  B2,
-} B;
-extern void something(B b);
+    const HEADER_DEF = \'typedef long int intmax_t;
+intmax_t foo(intmax_t a);
 \';
     private FFI $ffi;
     public function __construct(string $pathToSoFile = self::SOFILE) {
@@ -67,14 +60,9 @@ extern void something(B b);
             default: return $this->ffi->$name;
         }
     }
-    // enum A
-    const A1 = (0) + 0;
-    const A2 = (0) + 1;
-    // typedefenum B
-    const B1 = (0) + 0;
-    const B2 = (0) + 1;
-    public function something(?int $p0): void {
-        $this->ffi->something($p0);
+    public function foo(?int $p0): ?int {
+        $result = $this->ffi->foo($p0);
+        return $result;
     }
 }
 
@@ -139,6 +127,50 @@ class void_ptr_ptr_ptr implements itest {
     public function addr(): void_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
     public function deref(int $n = 0): void_ptr_ptr { return new void_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return \'void***\'; }
+}
+class intmax_t implements itest {
+    private FFI\\CData $data;
+    public function __construct($data) { $tmp = FFI::new(\'long int\'); $tmp = $data; $this->data = $tmp; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(intmax_t $other): bool { return $this->data == $other->data; }
+    public function addr(): intmax_t_ptr { return new intmax_t_ptr(FFI::addr($this->data)); }
+    public static function getType(): string { return \'intmax_t\'; }
+}
+class intmax_t_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(intmax_t_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): intmax_t_ptr_ptr { return new intmax_t_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): intmax_t { return new intmax_t($this->data[$n]); }
+    public static function getType(): string { return \'intmax_t*\'; }
+}
+class intmax_t_ptr_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(intmax_t_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): intmax_t_ptr_ptr_ptr { return new intmax_t_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): intmax_t_ptr { return new intmax_t_ptr($this->data[$n]); }
+    public static function getType(): string { return \'intmax_t**\'; }
+}
+class intmax_t_ptr_ptr_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(intmax_t_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): intmax_t_ptr_ptr_ptr_ptr { return new intmax_t_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): intmax_t_ptr_ptr { return new intmax_t_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return \'intmax_t***\'; }
+}
+class intmax_t_ptr_ptr_ptr_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(intmax_t_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): intmax_t_ptr_ptr_ptr_ptr_ptr { return new intmax_t_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): intmax_t_ptr_ptr_ptr { return new intmax_t_ptr_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return \'intmax_t****\'; }
 }';
 
     protected FFIMe $lib;
@@ -155,16 +187,16 @@ class void_ptr_ptr_ptr implements itest {
     }
 
     public function tearDown(): void {
-        @unlink(__DIR__ . '/basic_enumsTest.result.php');
+        @unlink(__DIR__ . '/basic_typedefsTest.result.php');
     }
 
     /**
-     * @textdox Test basic parsing of enums
+     * @textdox Test basic parsing of typedefs
      */
     public function testCodeGen() {
-        $this->lib->include(__DIR__ . '/basic_enumsTest.h');
-        $this->lib->codeGen("test\\test", __DIR__ . '/basic_enumsTest.result.php');
-        $this->assertFileExists(__DIR__ . '/basic_enumsTest.result.php');
-        $this->assertStringMatchesFormat(self::EXPECTED, trim(file_get_contents(__DIR__ . '/basic_enumsTest.result.php')));
+        $this->lib->include(__DIR__ . '/basic_typedefsTest.h');
+        $this->lib->codeGen("test\\test", __DIR__ . '/basic_typedefsTest.result.php');
+        $this->assertFileExists(__DIR__ . '/basic_typedefsTest.result.php');
+        $this->assertStringMatchesFormat(self::EXPECTED, trim(file_get_contents(__DIR__ . '/basic_typedefsTest.result.php')));
     }
 }
