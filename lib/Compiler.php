@@ -281,16 +281,17 @@ enum_decl:
     private const INT_TYPES = [
         'char',
         'int',
-        'unsigned',
-        'unsigned int',
         'long',
         'long long',
         'long int',
         'long long int',
         'int64_t',
+        'unsigned',
+        'unsigned int',
+        'unsigned long',
+        'unsigned long int',
         'unsigned long long',
         'unsigned long long int',
-
     ];
 
     private const FLOAT_TYPES = [
@@ -374,6 +375,9 @@ restart:
     
 
     protected function compileDeclClassImpl(string $name, string $ptrName, string $className): array {
+        if (isset($this->resolver[$name])) {
+            return [];
+        }
         $return = [];
         $return[] = "class {$name} implements i{$className} {";
         $return[] = '    private FFI\CData $data;';
@@ -394,7 +398,19 @@ restart:
             if ($prior === 'string') {
                 $prior = 'string_';
             }
-            $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
+            if (isset($this->resolver[$prior])) {
+                if (in_array($this->resolver[$prior], self::INT_TYPES)) {
+                    $return[] = '    public function deref(int $n = 0): int { return $this->data[$n] + 0; }';
+                } elseif (in_array($this->resolver[$prior], self::FLOAT_TYPES)) {
+                    $return[] = '    public function deref(int $n = 0): float { return $this->data[$n] + 0.0; }';
+                } else {
+                    // this is wrong, but unsure how to handle it...
+                    $return[] = '    public function deref(int $n = 0) { return $this->data[$n]; }';
+                }
+            } else {
+                $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
+            }
+            
         }
         if ($name === 'string_') {
             $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
