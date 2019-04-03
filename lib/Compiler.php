@@ -279,13 +279,21 @@ enum_decl:
     }
 
     private const INT_TYPES = [
+        'bool',
         'char',
         'int',
         'long',
         'long long',
         'long int',
         'long long int',
+        'int8_t',
+        'uint8_t',
+        'int16_t',
+        'uint16_t',
+        'int32_t',
+        'uint32_t',
         'int64_t',
+        'uint64_t',
         'unsigned',
         'unsigned int',
         'unsigned long',
