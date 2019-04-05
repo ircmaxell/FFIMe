@@ -300,6 +300,7 @@ enum_decl:
         'unsigned long int',
         'unsigned long long',
         'unsigned long long int',
+        'size_t',
     ];
 
     private const FLOAT_TYPES = [
