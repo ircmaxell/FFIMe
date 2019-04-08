@@ -352,7 +352,6 @@ restart:
             return $this->compileType($type->parent) . '_ptr';
         } elseif ($type instanceof Type\AttributedType) {
             if ($type->kind === Type\AttributedType::KIND_CONST) {
-                var_dump($type);
                 // we can omit const from our compilation
                 return $this->compileType($type->parent);
             } elseif ($type->kind === Type\AttributedType::KIND_EXTERN) {
