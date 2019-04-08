@@ -1,2 +1,2 @@
 typedef struct LLVMOpaqueModule * LLVMModuleRef;
-char * LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
+const char * LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
