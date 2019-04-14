@@ -152,15 +152,7 @@ class FFIMe {
     protected function filterSymbolDeclarations(): void {
         $result = [];
         foreach ($this->ast as $declaration) {
-            if ($declaration instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
-                if (isset($this->symbols[$declaration->name])) {
-                    $result[] = $declaration;
-                }
-            } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl) {
-                if (isset($this->symbols[$declaration->name])) {
-                    $result[] = $declaration;
-                }
-            } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
+            if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
                 if (isset($this->symbols[$declaration->name])) {
                     $result[] = $declaration;
                 }
@@ -168,7 +160,7 @@ class FFIMe {
                 if (isset($this->symbols[$declaration->name])) {
                     $result[] = $declaration;
                 }
-            } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TagDecl\EnumDecl) {
+            } else {
                 $result[] = $declaration;
             }
         }
