@@ -10,7 +10,8 @@
     ],
     "require": {
         "php": ">=7.4",
-        "ircmaxell/php-c-parser": "dev-master"
+        "ircmaxell/php-c-parser": "dev-master",
+        "ircmaxell/php-elf-symbolresolver": "^1.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^8.0"

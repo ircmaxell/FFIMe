@@ -7,6 +7,8 @@ namespace FFIMe;
 use PHPCParser\Context;
 use PHPCParser\CParser;
 use PHPCParser\Node\Decl;
+use PHPELFSymbolResolver\Parser as ElfParser;
+
 
 class FFIMe {
 
@@ -60,6 +62,8 @@ class FFIMe {
     private Compiler $compiler;
     private Context $context;
     private CParser $cparser;
+    
+    private array $symbols;
 
     private \FFI $ffi;
     private bool $built = false;
@@ -74,6 +78,8 @@ class FFIMe {
         $this->context = new Context($headerSearchPaths);
         $this->cparser = new CParser;
         $this->compiler = new Compiler;
+        $this->symbols = array_flip((new ElfParser)->parse($this->sofile)->getAllSymbols());
+
     }
 
     public function defineInt(string $identifier, int $value): void {
@@ -101,6 +107,7 @@ class FFIMe {
     }
 
     public function codeGen(string $className, string $filename): void {
+        $this->filterSymbolDeclarations();
         $this->compile($className);
         file_put_contents($filename, '<?php ' . $this->code[$className]);
     }
@@ -140,6 +147,32 @@ class FFIMe {
             }
         }
         throw new \LogicException('Could not find shared object file ' . $filename);
+    }
+
+    protected function filterSymbolDeclarations(): void {
+        $result = [];
+        foreach ($this->ast as $declaration) {
+            if ($declaration instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
+                if (isset($this->symbols[$declaration->name])) {
+                    $result[] = $declaration;
+                }
+            } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl) {
+                if (isset($this->symbols[$declaration->name])) {
+                    $result[] = $declaration;
+                }
+            } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
+                if (isset($this->symbols[$declaration->name])) {
+                    $result[] = $declaration;
+                }
+            } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
+                if (isset($this->symbols[$declaration->name])) {
+                    $result[] = $declaration;
+                }
+            } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TagDecl\EnumDecl) {
+                $result[] = $declaration;
+            }
+        }
+        $this->ast = $result;
     }
 
     protected function filterDeclarations(array $declarations): array {
