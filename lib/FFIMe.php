@@ -114,6 +114,7 @@ class FFIMe {
 
     public function build(?string $className = null) {
         $className = $className ?? $this->getDynamicClassName();
+        $this->filterSymbolDeclarations();
         $this->compile($className);
         eval($this->code[$className]);
         return new $className;

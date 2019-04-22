@@ -100,13 +100,16 @@ class ' . $class . ' extends TestCase {
     protected Printer $printer;
 
     public function setUp(): void {
-        $this->lib = new FFIMe(
+        $this->lib = new class(
             "/lib/x86_64-linux-gnu/libc.so.6",
             [
                 __DIR__,
                 __DIR__ . ' . var_export($searchPath, true) . '
             ]
-        );
+        ) extends FFIMe {
+            // Bypass filtering for tests
+            protected function filterSymbolDeclarations(): void {}
+        };
     }
 
     public function tearDown(): void {

@@ -211,13 +211,16 @@ class uintmax_t_ptr_ptr_ptr_ptr implements itest {
     protected Printer $printer;
 
     public function setUp(): void {
-        $this->lib = new FFIMe(
+        $this->lib = new class(
             "/lib/x86_64-linux-gnu/libc.so.6",
             [
                 __DIR__,
                 __DIR__ . '/../include'
             ]
-        );
+        ) extends FFIMe {
+            // Bypass filtering for tests
+            protected function filterSymbolDeclarations(): void {}
+        };
     }
 
     public function tearDown(): void {

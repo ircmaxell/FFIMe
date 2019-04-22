@@ -6,15 +6,24 @@ use PHPUnit\Framework\TestCase;
 /**
  * Note: this is a generated file, do not edit this!!!
  */
-class char_returnsTest extends TestCase {
+class enum_self_referencesTest extends TestCase {
 
     const EXPECTED = '<?php namespace %s;
 use FFI;
 interface itest {}
 class test {
     const SOFILE = \'%s\';
-    const HEADER_DEF = \'typedef struct LLVMOpaqueModule * LLVMModuleRef;
-char * LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
+    const HEADER_DEF = \'enum A {
+  A1 = 1,
+  A2 = A1,
+  A3 = 2,
+};
+typedef enum {
+  B1 = 1,
+  B2 = B1,
+  B3 = (B1 | B2),
+  B4,
+} B;
 \';
     private FFI $ffi;
     public function __construct(string $pathToSoFile = self::SOFILE) {
@@ -60,10 +69,15 @@ char * LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
             default: return $this->ffi->$name;
         }
     }
-    public function LLVMGetModuleIdentifier(?LLVMModuleRef $p0, ?int_ptr $p1): ?string_ {
-        $result = $this->ffi->LLVMGetModuleIdentifier($p0 === null ? null : $p0->getData(), $p1 === null ? null : $p1->getData());
-        return $result === null ? null : new string_($result);
-    }
+    // enum A
+    const A1 = (1) + 0;
+    const A2 = (self::A1) + 0;
+    const A3 = (2) + 0;
+    // typedefenum B
+    const B1 = (1) + 0;
+    const B2 = (self::B1) + 0;
+    const B3 = ((self::B1 | self::B2)) + 0;
+    const B4 = ((self::B1 | self::B2)) + 1;
 }
 
 class string_ implements itest {
@@ -127,50 +141,6 @@ class void_ptr_ptr_ptr implements itest {
     public function addr(): void_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
     public function deref(int $n = 0): void_ptr_ptr { return new void_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return \'void***\'; }
-}
-class LLVMModuleRef implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr { return new LLVMModuleRef_ptr(FFI::addr($this->data)); }
-    public static function getType(): string { return \'LLVMModuleRef\'; }
-}
-class LLVMModuleRef_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr { return new LLVMModuleRef_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef { return new LLVMModuleRef($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef*\'; }
-}
-class LLVMModuleRef_ptr_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef_ptr { return new LLVMModuleRef_ptr($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef**\'; }
-}
-class LLVMModuleRef_ptr_ptr_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef_ptr_ptr { return new LLVMModuleRef_ptr_ptr($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef***\'; }
-}
-class LLVMModuleRef_ptr_ptr_ptr_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef****\'; }
 }';
 
     protected FFIMe $lib;
@@ -190,16 +160,16 @@ class LLVMModuleRef_ptr_ptr_ptr_ptr implements itest {
     }
 
     public function tearDown(): void {
-        @unlink(__DIR__ . '/char_returnsTest.result.php');
+        @unlink(__DIR__ . '/enum_self_referencesTest.result.php');
     }
 
     /**
-     * @textdox Test basic parsing of character returns
+     * @textdox Test enum self references
      */
     public function testCodeGen() {
-        $this->lib->include(__DIR__ . '/char_returnsTest.h');
-        $this->lib->codeGen("test\\test", __DIR__ . '/char_returnsTest.result.php');
-        $this->assertFileExists(__DIR__ . '/char_returnsTest.result.php');
-        $this->assertStringMatchesFormat(self::EXPECTED, trim(file_get_contents(__DIR__ . '/char_returnsTest.result.php')));
+        $this->lib->include(__DIR__ . '/enum_self_referencesTest.h');
+        $this->lib->codeGen("test\\test", __DIR__ . '/enum_self_referencesTest.result.php');
+        $this->assertFileExists(__DIR__ . '/enum_self_referencesTest.result.php');
+        $this->assertStringMatchesFormat(self::EXPECTED, trim(file_get_contents(__DIR__ . '/enum_self_referencesTest.result.php')));
     }
 }

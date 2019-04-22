@@ -262,6 +262,9 @@ enum_decl:
                     return $this->compileExpr($expr->left) . ', ' . $this->compileExpr($expr->right);
             }
         }
+        if ($expr instanceof Expr\DeclRefExpr) {
+            return 'self::' . $expr->name;
+        }
         var_dump($expr);
     }
 
