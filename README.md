@@ -24,7 +24,7 @@ And a code generating mode:
 (new FFIMe\FFIMe("/lib/x86_64-linux-gnu/libc.so.6"))
         ->include("stdio.h")
         ->include("other.h")
-        ->godeGen('full\\classname', 'path/to/file.php');
+        ->codeGen('full\\classname', 'path/to/file.php');
 
 require 'path/to/file.php';
 $libc = new full\classname;
