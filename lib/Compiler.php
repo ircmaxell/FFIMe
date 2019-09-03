@@ -57,6 +57,9 @@ class Compiler {
         $class = array_merge($class, $this->compileDeclClassImpl('string_ptr', 'char**', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('string_ptr_ptr', 'char***', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('string_ptr_ptr_ptr', 'char****', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('int_ptr', 'int*', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('int_ptr_ptr', 'int**', $className));
+        $class = array_merge($class, $this->compileDeclClassImpl('int_ptr_ptr_ptr', 'int***', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('void_ptr', 'void*', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('void_ptr_ptr', 'void**', $className));
         $class = array_merge($class, $this->compileDeclClassImpl('void_ptr_ptr_ptr', 'void***', $className));
