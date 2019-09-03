@@ -301,6 +301,7 @@ enum_decl:
         'int64_t',
         'uint64_t',
         'unsigned',
+        'unsigned char',
         'unsigned int',
         'unsigned long',
         'unsigned long int',
