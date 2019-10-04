@@ -318,7 +318,7 @@ enum_decl:
         'bool',
         'string',
         'array',
-        'callback',
+        'callable',
     ];
 
     public function compileType(Type $type): string {
@@ -353,7 +353,7 @@ restart:
                 // const char*
                 return 'string';
             } elseif ($type->parent instanceof Type\ParenType && $type->parent->parent instanceof Type\FunctionType) {
-                return 'callback';
+                return 'callable';
             }
             return $this->compileType($type->parent) . '_ptr';
         } elseif ($type instanceof Type\AttributedType) {

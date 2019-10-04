@@ -59,7 +59,7 @@ class test {
             default: return $this->ffi->$name;
         }
     }
-    public function set_callback(?callback $p0): void {
+    public function set_callback(?callable $p0): void {
         $this->ffi->set_callback($p0);
     }
 }
