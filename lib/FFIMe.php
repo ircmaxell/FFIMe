@@ -58,6 +58,7 @@ class FFIMe {
 
     private array $ast = [];
     private array $numericDefines = [];
+    private array $definitionAst = [];
 
     private Compiler $compiler;
     private Context $context;
@@ -98,8 +99,12 @@ class FFIMe {
         if ($this->built) {
             throw new \RuntimeException("Already built, cannot include twice");
         }
-        $this->ast = array_merge($this->ast, $this->filterDeclarations($this->cparser->parse($header, $this->context)->declarations));
+        $this->filterDeclarations($this->cparser->parse($header, $this->context)->declarations);
         return $this;
+    }
+
+    public function warning(string $message) {
+        echo "[Warning] $message\n";
     }
 
     public function getCode(): string {
@@ -133,7 +138,7 @@ class FFIMe {
             return;
         }
         $this->numericDefines = $this->context->getNumericDefines();
-        $this->code[$className] = $this->compiler->compile($this->sofile, $this->ast, $this->numericDefines, $className);
+        $this->code[$className] = $this->compiler->compile($this->sofile, $this->ast, $this->definitionAst, $this->numericDefines, $className);
     }
     
     private function findSOFile(string $filename, array $searchPaths): string {
@@ -156,10 +161,14 @@ class FFIMe {
             if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
                 if (isset($this->symbols[$declaration->name])) {
                     $result[] = $declaration;
+                } else {
+                    $this->warning("Skipping {$declaration->name}, not found in object file");
                 }
             } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
                 if (isset($this->symbols[$declaration->name])) {
                     $result[] = $declaration;
+                } else {
+                    $this->warning("Skipping {$declaration->name}, not found in object file");
                 }
             } else {
                 $result[] = $declaration;
@@ -168,7 +177,7 @@ class FFIMe {
         $this->ast = $result;
     }
 
-    protected function filterDeclarations(array $declarations): array {
+    protected function filterDeclarations(array $declarations) {
         $result = [];
         foreach ($declarations as $declaration) {
             if ($declaration instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
@@ -186,6 +195,11 @@ class FFIMe {
                         // Skip __ functions
                         $result[] = $declaration;
                     }
+                } else {
+                    if (substr($declaration->name, 0, 2) !== '__' && !in_array($declaration->name, self::FUNCTIONS_TO_REMOVE)) {
+                        // Skip __ functions
+                        $this->definitionAst[] = $declaration;
+                    }
                 }
             } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
                 if (!in_array($declaration->name, self::VARS_TO_REMOVE)) {
@@ -197,6 +211,6 @@ class FFIMe {
                 throw new \LogicException('Unknown declaration type to skip/ignore: ' . get_class($declaration));
             }
         }
-        return $result;
+        $this->ast = array_merge($this->ast, $result);
     }
 }

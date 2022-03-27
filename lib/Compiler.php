@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace FFIMe;
 use PHPCParser\CParser;
 use PHPCParser\Node\Decl;
+use PHPCParser\Node\Stmt;
 use PHPCParser\Node\TranslationUnitDecl;
 use PHPCParser\Node\Type;
 use PHPCParser\Printer;
@@ -15,7 +16,7 @@ class Compiler {
     private array $defines;
     private array $resolver; 
 
-    public function compile(string $soFile, array $decls, array $defines, string $className): string {
+    public function compile(string $soFile, array $decls, array $definitions, array $defines, string $className): string {
         $this->defines = $defines;
         $this->resolver = $this->buildResolver($decls);
         $parts = explode('\\', $className);
@@ -51,6 +52,9 @@ class Compiler {
         $class[] = "    }";
         foreach ($decls as $decl) {
             $class = array_merge($class, $this->compileDecl($decl));
+        }
+        foreach ($definitions as $def) {
+            $class = array_merge($class, $this->compileDef($def));
         }
         $class[] = "}\n";
         $class = array_merge($class, $this->compileDeclClassImpl('string_', 'char*', $className));
@@ -132,6 +136,45 @@ class Compiler {
         // TODO
         $printer = new Printer\C;
         return $printer->printNodes($decls, 0);
+    }
+
+    public function compileDef(Decl $def): array {
+        $return = [];
+        if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
+            $returnType = $this->compileType($def->type->return);
+                $params = $this->compileParameters($def->type->params);
+            $nullableReturnType = $returnType === 'void' ? 'void' : '?' . $returnType;
+            if ($returnType === 'string') {
+                $nullableReturnType .= '_';
+            }
+            $paramSignature = [];
+            foreach ($params as $idx => $param) {
+                $paramSignature[] = '?' . $param . ' $' . $def->type->paramNames[$idx];
+            }
+            $return[] = "    public function {$def->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
+
+            $return = array_merge($return, $this->compileStmt($def->stmts));
+            $return[] = "    }";
+        }
+        return $return;
+    }
+
+    public function compileStmt(Stmt $stmt): array {
+        $result = [];
+        if ($stmt instanceof Stmt\CompoundStmt) {
+            foreach ($stmt->stmts as $stmt) {
+                $result = array_merge($result, $this->compileStmt($stmt));
+            }
+        } else {
+            switch ($stmt->getType()) {
+                case 'Stmt_ReturnStmt':
+                    $result[] = '        return ' . $this->compileExpr($stmt->result) . ';';
+                    break;
+                default:
+                    var_dump($stmt);
+            }
+        }
+        return $result;
     }
 
     public function compileDecl(Decl $declaration): array {
@@ -266,7 +309,12 @@ enum_decl:
             }
         }
         if ($expr instanceof Expr\DeclRefExpr) {
-            return 'self::' . $expr->name;
+            // lookup to determine if it's a constant or not
+            if (isset($this->defines[$expr->name])) {
+                return 'self::' . $expr->name;
+            }
+            // todo: validate this better
+            return '$' . $expr->name;
         }
         var_dump($expr);
     }
