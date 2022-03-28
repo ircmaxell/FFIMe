@@ -101,7 +101,7 @@ class ' . $class . ' extends TestCase {
 
     public function setUp(): void {
         $this->lib = new class(
-            "/lib/x86_64-linux-gnu/libc.so.6",
+            PHP_OS_FAMILY === "Darwin" ? "/usr/lib/system/libsystem_platform.dylib" : "/lib/x86_64-linux-gnu/libc.so.6",
             [
                 __DIR__,
                 __DIR__ . ' . var_export($searchPath, true) . '

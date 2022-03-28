@@ -14,9 +14,15 @@ interface itest {}
 class test {
     const SOFILE = \'%s\';
     const HEADER_DEF = \'void setFoo(char *value);
-char * getFoo();
+char *getFoo();
 \';
     private FFI $ffi;
+    const __%s__ = 1;
+    const __LP64__ = 1;
+    const __GNUC_VA_LIST = 1;
+    const __GNUC__ = 4;
+    const __GNUC_MINOR__ = 2;
+    const __STDC__ = 1;
     public function __construct(string $pathToSoFile = self::SOFILE) {
         $this->ffi = FFI::cdef(self::HEADER_DEF, $pathToSoFile);
     }
@@ -105,6 +111,33 @@ class string_ptr_ptr_ptr implements itest {
     public function deref(int $n = 0): string_ptr_ptr { return new string_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return \'char****\'; }
 }
+class int_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(int_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr { return new int_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): int { return new int($this->data[$n]); }
+    public static function getType(): string { return \'int*\'; }
+}
+class int_ptr_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(int_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr_ptr { return new int_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): int_ptr { return new int_ptr($this->data[$n]); }
+    public static function getType(): string { return \'int**\'; }
+}
+class int_ptr_ptr_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(int_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr_ptr_ptr { return new int_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): int_ptr_ptr { return new int_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return \'int***\'; }
+}
 class void_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
@@ -137,7 +170,7 @@ class void_ptr_ptr_ptr implements itest {
 
     public function setUp(): void {
         $this->lib = new class(
-            "/lib/x86_64-linux-gnu/libc.so.6",
+            PHP_OS_FAMILY === "Darwin" ? "/usr/lib/system/libsystem_platform.dylib" : "/lib/x86_64-linux-gnu/libc.so.6",
             [
                 __DIR__,
                 __DIR__ . '/../include'

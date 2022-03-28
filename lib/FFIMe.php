@@ -7,7 +7,7 @@ namespace FFIMe;
 use PHPCParser\Context;
 use PHPCParser\CParser;
 use PHPCParser\Node\Decl;
-use PHPELFSymbolResolver\Parser as ElfParser;
+use PHPObjectSymbolResolver\Parser as ObjectParser;
 
 
 class FFIMe {
@@ -15,7 +15,7 @@ class FFIMe {
     const TYPES_TO_REMOVE = [
         'void',
         'char',
-        'bool',
+        '_Bool',
         'int8_t',
         'uint8_t',
         'int16_t',
@@ -79,7 +79,7 @@ class FFIMe {
         $this->context = new Context($headerSearchPaths);
         $this->cparser = new CParser;
         $this->compiler = new Compiler;
-        $this->symbols = array_flip((new ElfParser)->parse($this->sofile)->getAllSymbols());
+        $this->symbols = array_flip(ObjectParser::parseFor($this->sofile)->getAllSymbols());
 
     }
 
@@ -107,7 +107,7 @@ class FFIMe {
         echo "[Warning] $message\n";
     }
 
-    public function getCode(): string {
+    public function getCode(): array {
         return $this->code;
     }
 

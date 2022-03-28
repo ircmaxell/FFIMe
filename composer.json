@@ -11,7 +11,7 @@
     "require": {
         "php": ">=7.4",
         "ircmaxell/php-c-parser": "dev-master",
-        "ircmaxell/php-object-symbolresolver": "^1.0"
+        "ircmaxell/php-object-symbolresolver": "dev-master"
     },
     "require-dev": {
         "phpunit/phpunit": "^8.0"

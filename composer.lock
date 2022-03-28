@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "2037a4b00113c879a9fd00124071d5ca",
+    "content-hash": "a1ea26431b50563153afc0ae5dc934bb",
     "packages": [
         {
             "name": "ircmaxell/php-c-parser",
@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-c-parser.git",
-                "reference": "a7b868a5cb9769164ea440a963d231379cda558c"
+                "reference": "64345555a0ad2f15ca69360a21bbda21404a7e46"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/a7b868a5cb9769164ea440a963d231379cda558c",
-                "reference": "a7b868a5cb9769164ea440a963d231379cda558c",
+                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/64345555a0ad2f15ca69360a21bbda21404a7e46",
+                "reference": "64345555a0ad2f15ca69360a21bbda21404a7e46",
                 "shasum": ""
             },
             "require": {
@@ -53,29 +53,30 @@
                 "issues": "https://github.com/ircmaxell/php-c-parser/issues",
                 "source": "https://github.com/ircmaxell/php-c-parser/tree/master"
             },
-            "time": "2022-03-27T16:13:41+00:00"
+            "time": "2022-03-27T17:38:26+00:00"
         },
         {
             "name": "ircmaxell/php-object-symbolresolver",
-            "version": "v1.0.0",
+            "version": "dev-master",
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-object-symbolresolver.git",
-                "reference": "675dc5f12600f30aec2bb0f3dfaf8f3480775033"
+                "reference": "16ae0291f362e477e32f8c937ddc551c163d6408"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-object-symbolresolver/zipball/675dc5f12600f30aec2bb0f3dfaf8f3480775033",
-                "reference": "675dc5f12600f30aec2bb0f3dfaf8f3480775033",
+                "url": "https://api.github.com/repos/ircmaxell/php-object-symbolresolver/zipball/16ae0291f362e477e32f8c937ddc551c163d6408",
+                "reference": "16ae0291f362e477e32f8c937ddc551c163d6408",
                 "shasum": ""
             },
             "require": {
                 "php": ">=7.4"
             },
+            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
-                    "PHPELFSymbolResolver\\": "lib/"
+                    "PHPObjectSymbolResolver\\": "lib/"
                 }
             },
             "notification-url": "https://packagist.org/downloads/",
@@ -86,14 +87,18 @@
                 {
                     "name": "Anthony Ferrara",
                     "email": "ircmaxell@gmail.com"
+                },
+                {
+                    "name": "Bob Weinand",
+                    "email": "bobwei9@hotmail.com"
                 }
             ],
-            "description": "A linux object file (ELF) parser",
+            "description": "An object file (ELF, Mach-O) parser",
             "support": {
                 "issues": "https://github.com/ircmaxell/php-object-symbolresolver/issues",
-                "source": "https://github.com/ircmaxell/php-object-symbolresolver/tree/v1.0.0"
+                "source": "https://github.com/ircmaxell/php-object-symbolresolver/tree/master"
             },
-            "time": "2019-04-14T01:28:33+00:00"
+            "time": "2022-03-28T22:26:42+00:00"
         }
     ],
     "packages-dev": [
@@ -1881,7 +1886,8 @@
     "aliases": [],
     "minimum-stability": "stable",
     "stability-flags": {
-        "ircmaxell/php-c-parser": 20
+        "ircmaxell/php-c-parser": 20,
+        "ircmaxell/php-object-symbolresolver": 20
     },
     "prefer-stable": false,
     "prefer-lowest": false,
@@ -1889,5 +1895,5 @@
         "php": ">=7.4"
     },
     "platform-dev": [],
-    "plugin-api-version": "2.2.0"
+    "plugin-api-version": "2.1.0"
 }

@@ -226,6 +226,7 @@ enum_decl:
                         $id++;
                         continue;
                     }
+                    $this->defines[$field->name] = false; // dummy, marking enum value
                     if ($field->value !== null) {
                         $lastValue =  $this->compileExpr($field->value);
                         $id = 0;
@@ -247,7 +248,7 @@ enum_decl:
         if ($expr instanceof Expr\IntegerLiteral) {
             // parse out type qualifiers
             $value = str_replace(['u', 'U', 'l', 'L'], '', $expr->value);
-            return (string) intval($expr->value);
+            return (string) (int) $value;
         }
         if ($expr instanceof Expr\AbstractConditionalOperator\ConditionalOperator) {
             return '(' . $this->compileExpr($expr->cond) . ' ? ' . $this->compileExpr($expr->ifTrue) . ' : ' . $this->compileExpr($expr->ifFalse) . ')';
@@ -333,7 +334,7 @@ enum_decl:
     }
 
     private const INT_TYPES = [
-        'bool',
+        '_Bool',
         'char',
         'int',
         'long',
@@ -367,7 +368,7 @@ enum_decl:
     private const NATIVE_TYPES = [
         'int',
         'float',
-        'bool',
+        '_Bool',
         'string',
         'array',
     ];
@@ -405,11 +406,11 @@ restart:
                 return 'string';
             }
             return $this->compileType($type->parent) . '_ptr';
-        } elseif ($type instanceof Type\AttributedType) {
-            if ($type->kind === Type\AttributedType::KIND_CONST) {
+        } elseif ($type instanceof Type\ExplicitAttributedType) {
+            if ($type->kind === Type\ExplicitAttributedType::KIND_CONST) {
                 // we can omit const from our compilation
                 return $this->compileType($type->parent);
-            } elseif ($type->kind === Type\AttributedType::KIND_EXTERN) {
+            } elseif ($type->kind === Type\ExplicitAttributedType::KIND_EXTERN) {
                 return $this->compileType($type->parent);
             }
         } elseif ($type instanceof Type\TagType\RecordType) {
@@ -426,18 +427,18 @@ restart:
     }
 
     public function compileDeclClass(Decl $decl, string $className): array {
-        $return = [];
+        $returns = [];
         if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
             if ($decl->type instanceof Type\TagType\EnumType) {
                 // don't compile enums
                 return [];
             }
-            $return = array_merge($return, $this->compileDeclClassImpl($decl->name, $decl->name, $className));
+            $returns[] = $this->compileDeclClassImpl($decl->name, $decl->name, $className);
             for ($i = 1; $i <= 4; $i++) {
-                $return = array_merge($return, $this->compileDeclClassImpl($decl->name . str_repeat('_ptr', $i), $decl->name . str_repeat('*', $i), $className));
+                $returns[] = $this->compileDeclClassImpl($decl->name . str_repeat('_ptr', $i), $decl->name . str_repeat('*', $i), $className);
             }
         }
-        return $return;
+        return array_merge(...$returns);
     }
     
 
