@@ -141,15 +141,19 @@ class Compiler {
     public function compileDef(Decl $def): array {
         $return = [];
         if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
-            $returnType = $this->compileType($def->type->return);
-                $params = $this->compileParameters($def->type->params);
+            $functionType = $def->type;
+            while ($functionType instanceof Type\ExplicitAttributedType) {
+                $functionType = $functionType->parent;
+            }
+            $returnType = $this->compileType($functionType->return);
+            $params = $this->compileParameters($functionType->params);
             $nullableReturnType = $returnType === 'void' ? 'void' : '?' . $returnType;
             if ($returnType === 'string') {
                 $nullableReturnType .= '_';
             }
             $paramSignature = [];
             foreach ($params as $idx => $param) {
-                $paramSignature[] = '?' . $param . ' $' . $def->type->paramNames[$idx];
+                $paramSignature[] = '?' . $param . ' $' . $functionType->paramNames[$idx];
             }
             $return[] = "    public function {$def->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
 
@@ -336,6 +340,7 @@ enum_decl:
     private const INT_TYPES = [
         '_Bool',
         'char',
+        'short',
         'int',
         'long',
         'long long',
@@ -351,6 +356,7 @@ enum_decl:
         'uint64_t',
         'unsigned',
         'unsigned char',
+        'unsigned short',
         'unsigned int',
         'unsigned long',
         'unsigned long int',
