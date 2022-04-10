@@ -79,8 +79,17 @@ class FFIMe {
         $this->context = new Context($headerSearchPaths);
         $this->cparser = new CParser;
         $this->compiler = new Compiler;
-        $this->symbols = array_flip(ObjectParser::parseFor($this->sofile)->getAllSymbols());
-
+        if (PHP_OS_FAMILY === 'Darwin' && !file_exists($this->sofile)) {
+            $definitionFile = str_replace(".dylib", ".tbd", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk{$this->sofile}");
+            preg_match_all('(symbols:\s*\[\K[^]]*)', file_get_contents($definitionFile), $m);
+            $symbols = [];
+            foreach ($m[0] as $match) {
+                $symbols[] = preg_split('(\'?\s*,\s*\'?)', trim($match, " \n'"));
+            }
+            $this->symbols = array_flip(array_merge(...$symbols));
+        } else {
+            $this->symbols = array_flip(ObjectParser::parseFor($this->sofile)->getAllSymbols());
+        }
     }
 
     public function defineInt(string $identifier, int $value): void {
@@ -146,6 +155,11 @@ class FFIMe {
             // no searching needed
             return $filename; 
         }
+        if (PHP_OS_FAMILY === 'Darwin' && str_starts_with($filename, '/usr/lib/')) {
+            if (is_file(str_replace(".dylib", ".tbd", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk$filename"))) {
+                return $filename;
+            }
+        }
         foreach ($searchPaths as $path) {
             $test = $path . '/' . $filename;
             if (file_exists($test)) {
@@ -159,13 +173,13 @@ class FFIMe {
         $result = [];
         foreach ($this->ast as $declaration) {
             if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
-                if (isset($this->symbols[$declaration->name])) {
+                if (isset($this->symbols[$declaration->name]) || isset($this->symbols["_{$declaration->name}"])) {
                     $result[] = $declaration;
                 } else {
                     $this->warning("Skipping {$declaration->name}, not found in object file");
                 }
             } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
-                if (isset($this->symbols[$declaration->name])) {
+                if (isset($this->symbols[$declaration->name]) || isset($this->symbols["_{$declaration->name}"])) {
                     $result[] = $declaration;
                 } else {
                     $this->warning("Skipping {$declaration->name}, not found in object file");
