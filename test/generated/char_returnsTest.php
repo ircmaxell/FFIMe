@@ -17,6 +17,7 @@ class test {
 char *LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
 \';
     private FFI $ffi;
+    private array $__literalStrings = [];
     const __%s__ = 1;
     const __LP64__ = 1;
     const __GNUC_VA_LIST = 1;
@@ -66,8 +67,21 @@ char *LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
             default: return $this->ffi->$name;
         }
     }
-    public function LLVMGetModuleIdentifier(?LLVMModuleRef $p0, ?int_ptr $p1): ?string_ {
-        $result = $this->ffi->LLVMGetModuleIdentifier($p0 === null ? null : $p0->getData(), $p1 === null ? null : $p1->getData());
+    public function __allocCachedString(string $str): FFI\\CData {
+        return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();
+    }
+    public function LLVMGetModuleIdentifier(LLVMModuleRef | null $M, int_ptr | null | array $Len): ?string_ {
+        $M = $M->getData();
+        if (\\is_array($Len)) {
+            $_ = $this->ffi->new("size_t[" . \\count($Len) . "]");
+            foreach (\\array_values($Len) as $_k => $_v) {
+                $_[$_k] = $_v;
+            }
+            $Len = $_;
+        } else {
+            $Len = $Len->getData();
+        }
+        $result = $this->ffi->LLVMGetModuleIdentifier($M, $Len);
         return $result === null ? null : new string_($result);
     }
 }
@@ -79,6 +93,10 @@ class string_ implements itest {
     public function equals(string_ $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr { return new string_ptr(FFI::addr($this->data)); }
     public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }
+    public static function persistent(string $string): self { $str = new self(FFI::new("char[" . \\strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \\strlen($string)); return $str; }
+    public static function owned(string $string): self { $str = new self(FFI::new("char[" . \\strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \\strlen($string)); return $str; }
+    public static function persistentZero(string $string): self { return self::persistent("$string\\0"); }
+    public static function ownedZero(string $string): self { return self::owned("$string\\0"); }
     public static function getType(): string { return \'char*\'; }
 }
 class string_ptr implements itest {
@@ -211,7 +229,7 @@ class LLVMModuleRef_ptr_ptr_ptr_ptr implements itest {
 
     public function setUp(): void {
         $this->lib = new class(
-            PHP_OS_FAMILY === "Darwin" ? "/usr/lib/system/libsystem_platform.dylib" : "/lib/x86_64-linux-gnu/libc.so.6",
+            PHP_OS_FAMILY === "Darwin" ? "/usr/lib/libSystem.B.dylib" : "/lib/x86_64-linux-gnu/libc.so.6",
             [
                 __DIR__,
                 __DIR__ . '/../include'

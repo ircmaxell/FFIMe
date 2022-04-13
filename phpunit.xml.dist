@@ -13,6 +13,9 @@
         <testsuite name="FFIMe Test Suite">
             <directory suffix=".php">./test/generated</directory>
         </testsuite>
+        <testsuite name="FFIMe InlineFunctions Suite">
+            <directory suffix=".php">./test/InlineFunctions</directory>
+        </testsuite>
     </testsuites>
 
     <filter>

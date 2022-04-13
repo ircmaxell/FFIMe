@@ -205,12 +205,12 @@ class FFIMe {
             } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
                 if ($declaration->stmts === null) {
                     // only declarations, not definitions
-                    if (substr($declaration->name, 0, 2) !== '__' && !in_array($declaration->name, self::FUNCTIONS_TO_REMOVE)) {
+                    if (!in_array($declaration->name, self::FUNCTIONS_TO_REMOVE)) {
                         // Skip __ functions
                         $result[] = $declaration;
                     }
                 } else {
-                    if (substr($declaration->name, 0, 2) !== '__' && !in_array($declaration->name, self::FUNCTIONS_TO_REMOVE)) {
+                    if (!in_array($declaration->name, self::FUNCTIONS_TO_REMOVE)) {
                         // Skip __ functions
                         $this->definitionAst[] = $declaration;
                     }

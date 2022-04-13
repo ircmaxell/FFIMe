@@ -3,22 +3,30 @@
 declare(strict_types=1);
 
 namespace FFIMe;
-use PHPCParser\CParser;
 use PHPCParser\Node\Decl;
 use PHPCParser\Node\Stmt;
-use PHPCParser\Node\TranslationUnitDecl;
 use PHPCParser\Node\Type;
 use PHPCParser\Printer;
 use PHPCParser\Node\Stmt\ValueStmt\Expr;
 
 class Compiler {
 
+    const COMPILED_PREFIX = "_ffi_internal_";
+
     private array $defines;
-    private array $resolver; 
+    private array $resolver;
+    /** @var CompiledType[] */
+    private array $localVariableTypes = [];
+    private array $globalVariableTypes = [];
+    /** @var CompiledType[] */
+    private array $records = [];
+    private array $knownFunctions = [];
+    private array $knownCompiledFunctions = [];
 
     public function compile(string $soFile, array $decls, array $definitions, array $defines, string $className): string {
         $this->defines = $defines;
         $this->resolver = $this->buildResolver($decls);
+        $this->records = $this->buildRecordFieldTypeMap($decls);
         $parts = explode('\\', $className);
         $class = [];
         if (isset($parts[1])) {
@@ -32,6 +40,7 @@ class Compiler {
         $class[] = "    const SOFILE = " . var_export($soFile, true) . ';';
         $class[] = "    const HEADER_DEF = " . var_export($this->compileDeclsToCode($decls), true) . ';';
         $class[] = "    private FFI \$ffi;";
+        $class[] = "    private array \$__literalStrings = [];";
         foreach ($defines as $define => $value) {
             // remove type qualifiers
             $value = str_replace(['u', 'l', 'U', 'L'], '', $value);
@@ -50,6 +59,9 @@ class Compiler {
         $class[] = "            default: return \$this->ffi->\$name;";
         $class[] = "        }";
         $class[] = "    }";
+        $class[] = '    public function __allocCachedString(string $str): FFI\CData {';
+        $class[] = '        return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();';
+        $class[] = '    }';
         foreach ($decls as $decl) {
             $class = array_merge($class, $this->compileDecl($decl));
         }
@@ -77,7 +89,7 @@ class Compiler {
         $results = [];
         foreach ($decls as $decl) {
             if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
-                $return = $this->compileType($decl->type);
+                $return = $this->toPHPType($this->compileType($decl->type));
                 if (in_array($return, self::NATIVE_TYPES)) {
                     $results[] = "case " . var_export($decl->name, true) . ": return \$this->ffi->{$decl->name};";
                 } else {
@@ -139,43 +151,105 @@ class Compiler {
     }
 
     public function compileDef(Decl $def): array {
+        $this->localVariableTypes = [];
+
         $return = [];
         if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
-            $functionType = $def->type;
-            while ($functionType instanceof Type\ExplicitAttributedType) {
-                $functionType = $functionType->parent;
+            $this->knownCompiledFunctions[$def->name] = $def;
+
+            [$return, $functionType, $params, $returnType] = $this->compileFunctionStart($def);
+            foreach ($params as $idx => $param) {
+                $varname = $functionType->paramNames[$idx];
+                $this->localVariableTypes[$varname] = $param;
             }
-            $returnType = $this->compileType($functionType->return);
-            $params = $this->compileParameters($functionType->params);
-            $nullableReturnType = $returnType === 'void' ? 'void' : '?' . $returnType;
-            if ($returnType === 'string') {
-                $nullableReturnType .= '_';
+            $callParams = [];
+            foreach ($params as $idx => $param) {
+                $callParams[] = '$' . ($functionType->paramNames[$idx] ?: "_$idx");
             }
+            if ($returnType !== 'void') {
+                $return[] = '        $result = $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
+                if (in_array($returnType, self::NATIVE_TYPES)) {
+                    $return[] = '        return $result;';
+                } else {
+                    $return[] = '        return $result === null ? null : new ' . $returnType . '($result);';
+                }
+            } else {
+                $return[] = '        $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
+            }
+            $return[] = "    }";
+
+            $nullableReturnType = $returnType === 'void' ? 'void' : '?' . (in_array($returnType, self::NATIVE_TYPES) ? $returnType : 'FFI\CData');
             $paramSignature = [];
             foreach ($params as $idx => $param) {
-                $paramSignature[] = '?' . $param . ' $' . $functionType->paramNames[$idx];
+                $varname = $functionType->paramNames[$idx] ?: "_$idx";
+                $paramSignature[] = (in_array($param->value, self::NATIVE_TYPES) && $param->pointer === 0 ? $param->value : 'FFI\CData') . ' $' . $varname;
             }
-            $return[] = "    public function {$def->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
-
+            $return[] = "    private function " . self::COMPILED_PREFIX . "{$def->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
             $return = array_merge($return, $this->compileStmt($def->stmts));
             $return[] = "    }";
         }
         return $return;
     }
 
-    public function compileStmt(Stmt $stmt): array {
+    public function compileStmt(Stmt $stmt, $level = 2): array {
         $result = [];
         if ($stmt instanceof Stmt\CompoundStmt) {
             foreach ($stmt->stmts as $stmt) {
-                $result = array_merge($result, $this->compileStmt($stmt));
+                $result = array_merge($result, $this->compileStmt($stmt, $level));
             }
         } else {
-            switch ($stmt->getType()) {
-                case 'Stmt_ReturnStmt':
-                    $result[] = '        return ' . $this->compileExpr($stmt->result) . ';';
-                    break;
-                default:
-                    var_dump($stmt);
+            if ($stmt instanceof Stmt\ReturnStmt) {
+                $result[] = str_repeat(' ', $level * 4) . 'return ' . $this->compileExpr($stmt->result)->value . ';';
+            } elseif ($stmt instanceof Expr) {
+                $result[] = str_repeat(' ', $level * 4) . $this->compileExpr($stmt)->value . ';';
+            } elseif ($stmt instanceof Stmt\DeclStmt) {
+                foreach ($this->compileDeclStmt($stmt) as $declResult) {
+                    $result[] = str_repeat(' ', $level * 4) . $declResult . ';';
+                }
+            } elseif ($stmt instanceof Stmt\LoopStmt) {
+                if ($stmt->condition && !$stmt->initStmt && !$stmt->loopExpr) {
+                    $loop = 'while (' . $this->compileExpr($stmt->condition)->value . ')';
+                } else {
+                    $loop = 'for (';
+                    if ($stmt->initStmt) {
+                        if ($stmt->initStmt instanceof Stmt\DeclStmt) {
+                            if ($decls = $this->compileDeclStmt($stmt->initStmt)) {
+                                $loop .= implode(', ', $decls);
+                            }
+                        } elseif ($stmt->initStmt instanceof Expr) {
+                            $loop .= $this->compileExpr($stmt->initStmt)->value;
+                        }
+                    }
+                    $loop .= ';' . ($stmt->condition ? ' ' . $this->compileExpr($stmt->condition)->value : '') . ';' . ($stmt->loopExpr ? ' ' . $this->compileExpr($stmt->loopExpr)->value : '') . ')';
+                }
+                $result[] = str_repeat(' ', $level * 4) . $loop . ' {';
+                $result = array_merge($result, $this->compileStmt($stmt->loopStmt, $level + 1));
+                $result[] = str_repeat(' ', $level * 4) . '}';
+            } else {
+                var_dump($stmt);
+            }
+        }
+        return $result;
+    }
+
+    public function compileDeclStmt(Stmt\DeclStmt $stmt): array {
+        $result = [];
+        foreach ($stmt->declarations->declarations as $decl) {
+            if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
+                $varType = $this->compileType($decl->type);
+                if ($decl->initializer) {
+                    $expr = $this->compileExpr($decl->initializer);
+                    $val = $expr->value;
+                    if ($expr->type != $varType && $expr->type->pointer) {
+                        $val = '$this->ffi->cast("' . $varType->rawValue . str_repeat('*', $varType->pointer) . '", ' . $val . ')';
+                    }
+                    $result[] = '$' . $decl->name . ' = ' . $val;
+                } elseif ($varType->pointer) {
+                    $result[] = '$' . $decl->name . ' = $this->ffi->new("' . $varType->rawValue . str_repeat('*', $varType->pointer) . '")';
+                }
+                $this->localVariableTypes[$decl->name] = $varType;
+            } else {
+                var_dump($decl);
             }
         }
         return $result;
@@ -184,31 +258,15 @@ class Compiler {
     public function compileDecl(Decl $declaration): array {
         $return = [];
         if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
-            $returnType = $this->compileType($declaration->type->return);
-            $params = $this->compileParameters($declaration->type->params);
-            $nullableReturnType = $returnType === 'void' ? 'void' : '?' . $returnType;
-            if ($returnType === 'string') {
-                $nullableReturnType .= '_';
-            }
-            $paramSignature = [];
-            foreach ($params as $idx => $param) {
-                $paramSignature[] = '?' . $param . ' $p' . $idx;
-            }
-            $return[] = "    public function {$declaration->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
-            
+            [$return, $functionType, $params, $returnType] = $this->compileFunctionStart($declaration);
+
             $callParams = [];
             foreach ($params as $idx => $param) {
-                if (in_array($param, self::NATIVE_TYPES)) {
-                    $callParams[] = '$p' . $idx;
-                } else {
-                    $callParams[] = '$p' . $idx . ' === null ? null : $p' . $idx . '->getData()';
-                }
+                $callParams[] = '$' . ($functionType->paramNames[$idx] ?: "_$idx");
             }
             if ($returnType !== 'void') {
                 $return[] = '        $result = $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
-                if ($returnType === 'string') {
-                    $return[] = '        return $result === null ? null : new string_($result);';
-                } elseif (in_array($returnType, self::NATIVE_TYPES)) {
+                if (in_array($returnType, self::NATIVE_TYPES)) {
                     $return[] = '        return $result;';
                 } else {
                     $return[] = '        return $result === null ? null : new ' . $returnType . '($result);';
@@ -232,7 +290,7 @@ enum_decl:
                     }
                     $this->defines[$field->name] = false; // dummy, marking enum value
                     if ($field->value !== null) {
-                        $lastValue =  $this->compileExpr($field->value);
+                        $lastValue =  $this->compileExpr($field->value)->value;
                         $id = 0;
                     }
                     // Add, since lastValue may be an expression...
@@ -244,82 +302,226 @@ enum_decl:
             $return[] = "    // typedefenum {$declaration->name}";
             $declaration = $declaration->type->decl;
             goto enum_decl;
+        } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
+            $this->globalVariableTypes[$declaration->name] = $this->compileType($declaration->type);
+        }
+        if (substr($declaration->name ?? "", 0, 2) === '__') {
+            return [];
         }
         return $return;
     }
 
-    public function compileExpr(Expr $expr): string {
+    public function compileFunctionStart(Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl $decl): array {
+        $this->knownFunctions[$decl->name] = $decl;
+        $functionType = $decl->type;
+        while ($functionType instanceof Type\ExplicitAttributedType) {
+            $functionType = $functionType->parent;
+        }
+        $returnType = $this->toPHPType($this->compileType($functionType->return));
+        $params = $this->compileParameters($functionType->params);
+        $nullableReturnType = $returnType === 'void' ? 'void' : '?' . $returnType;
+        $paramSignature = [];
+        foreach ($params as $idx => $param) {
+            $varname = $functionType->paramNames[$idx] ?: "_$idx";
+            $phpParam = $this->toPHPType($param);
+            $paramSignature[] = $phpParam . ' | null' . ($phpParam === 'string_' ? ' | string' : '') . ($param->pointer >= 1 ? ' | array' : '') . ' $' . $varname;
+        }
+        $return[] = "    public function {$decl->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
+        foreach ($params as $idx => $param) {
+            $varname = $functionType->paramNames[$idx] ?: "_$idx";
+            $hasIf = false;
+            if ($this->toPHPType($param) === 'string_') {
+                $return[] = '        if (\is_string($' . $varname . ')) {';
+                $return[] = '            $' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
+                $hasIf = true;
+            }
+            if ($param->pointer >= 1) {
+                $return[] = '        ' . ($hasIf ? '} else' : '') . 'if (\is_array($' . $varname . ')) {';
+                $return[] = '            $_ = $this->ffi->new("' . $param->rawValue . str_repeat("*", $param->pointer - 1) . '[" . \count($' . $varname . ') . "]");';
+                $return[] = '            foreach (\array_values($' . $varname . ') as $_k => $_v) {';
+                $return[] = '                $_[$_k] = $_v' . ($param->pointer == 1 && in_array($param->value, self::NATIVE_TYPES) ? '' : '->getData()') . ';';
+                $return[] = '            }';
+                $return[] = '            $' . $varname . ' = $_;';
+                $hasIf = true;
+            }
+            if (!in_array($param->value, self::NATIVE_TYPES) || $param->pointer > 0) {
+                if ($hasIf) {
+                    $return[] = '        } else {';
+                }
+                $return[] = ($hasIf ? '    ' : '') . '        $' . $varname . ' = $' . $varname . '->getData();';
+            }
+            if ($hasIf) {
+                $return[] = '        }';
+            }
+        }
+        return [$return, $functionType, $params, $returnType];
+    }
+
+    protected function formatString(string $string): string {
+        static $replacements;
+        if (!$replacements) {
+            $replacements = ["\0" => '\0', "\n" => '\n', "\t" => '\t', "\v" => '\v', "\e" => '\e', '??' => '\??', '\\' => '\\\\', '"' => '\"'];
+            for ($i = 1; $i < 0x20; ++$i) {
+                $replacements[\chr($i)] = sprintf('\x%02x', $i);
+            }
+            for ($i = 0x7f; $i <= 0xFF; ++$i) {
+                $replacements[\chr($i)] = sprintf('\x%02x', $i);
+            }
+        }
+        return '"' . strtr($string, $replacements) . '"';
+    }
+
+    public function compileExpr(Expr $expr, bool $isAssign = false, bool $isAddrOf = false): CompiledExpr {
         if ($expr instanceof Expr\IntegerLiteral) {
             // parse out type qualifiers
             $value = str_replace(['u', 'U', 'l', 'L'], '', $expr->value);
-            return (string) (int) $value;
+            return new CompiledExpr((string) (int) $value);
         }
         if ($expr instanceof Expr\AbstractConditionalOperator\ConditionalOperator) {
-            return '(' . $this->compileExpr($expr->cond) . ' ? ' . $this->compileExpr($expr->ifTrue) . ' : ' . $this->compileExpr($expr->ifFalse) . ')';
+            // assume this is valid and both of a common type
+            $true = $this->compileExpr($expr->ifTrue);
+            return $true->withCurrent('(' . $this->compileExpr($expr->cond)->toValue() . ' ? ' . $true->value . ' : ' . $this->compileExpr($expr->ifFalse)->value . ')');
         }
         if ($expr instanceof Expr\UnaryOperator) {
+            $op = $this->compileExpr($expr->expr, isAddrOf: $expr->kind === Expr\UnaryOperator::KIND_ADDRESS_OF);
             switch ($expr->kind) {
                 case Expr\UnaryOperator::KIND_PLUS:
-                    return '(+' . $this->compileExpr($expr->expr) . ')';
+                    return new CompiledExpr('(+' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_MINUS:
-                    return '(-' . $this->compileExpr($expr->expr) . ')';
+                    return new CompiledExpr('(-' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_BITWISE_NOT:
-                    return '(~' . $this->compileExpr($expr->expr) . ')';
+                    return new CompiledExpr('(~' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_LOGICAL_NOT:
-                    return '(!' . $this->compileExpr($expr->expr) . ')';
+                    return new CompiledExpr('(!' . $op->toValue() . ')');
+                case Expr\UnaryOperator::KIND_POSTDEC:
+                    return $op->withCurrent('(' . $op->value . '--)');
+                case Expr\UnaryOperator::KIND_POSTINC:
+                    return $op->withCurrent('(' . $op->value . '++)');
+                case Expr\UnaryOperator::KIND_PREDEC:
+                    return $op->withCurrent('(--' . $op->value . ')');
+                case Expr\UnaryOperator::KIND_PREINC:
+                    return $op->withCurrent('(++' . $op->value . ')');
+                case Expr\UnaryOperator::KIND_ADDRESS_OF:
+                    return $op->withCurrent('FFI::addr(' . $op->value . ')', 1);
+                case Expr\UnaryOperator::KIND_DEREF:
+                    return $op->withCurrent($isAssign || !$op->type->isChar ? $op->value . '[0]' : '\ord(' . $op->value . '[0])', -1);
+                case Expr\UnaryOperator::KIND_ALIGNOF:
+                    return new CompiledExpr('FFI::alignof(' . $op->value . ')');
+                case Expr\UnaryOperator::KIND_SIZEOF:
+                    return new CompiledExpr('FFI::sizeof(' . $op->value . ')');
                 default:
                     throw new \LogicException("Unsupported unary operator for library: " . $expr->kind);
             }
         }
         if ($expr instanceof Expr\BinaryOperator) {
+            $left = $this->compileExpr($expr->left, isAssign: $expr->kind === Expr\BinaryOperator::KIND_ASSIGN);
+            $right = $this->compileExpr($expr->right);
             switch ($expr->kind) {
                 case Expr\BinaryOperator::KIND_ADD:
-                    return '(' . $this->compileExpr($expr->left) . ' + ' . $this->compileExpr($expr->right) . ')';
+                    return $left->withCurrent('(' . $left->value . ' + ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_SUB:
-                    return '(' . $this->compileExpr($expr->left) . ' - ' . $this->compileExpr($expr->right) . ')';
+                    return !$left->type->pointer === !$right->type->pointer ? new CompiledExpr('(' . $left->value . ' - ' . $right->value . ')') : $left->withCurrent('(' . $left->value . ' - ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_MUL:
-                    return '(' . $this->compileExpr($expr->left) . ' * ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' * ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_DIV:
-                    return '(' . $this->compileExpr($expr->left) . ' / ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' / ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_REM:
-                    return '(' . $this->compileExpr($expr->left) . ' % ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' % ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_SHL:
-                    return '(' . $this->compileExpr($expr->left) . ' << ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' << ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_SHR:
-                    return '(' . $this->compileExpr($expr->left) . ' >> ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' >> ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LT:
-                    return '(' . $this->compileExpr($expr->left) . ' < ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' < ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_GT:
-                    return '(' . $this->compileExpr($expr->left) . ' > ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' > ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LE:
-                    return '(' . $this->compileExpr($expr->left) . ' <= ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' <= ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_GE:
-                    return '(' . $this->compileExpr($expr->left) . ' >= ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' >= ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_EQ:
-                    return '(' . $this->compileExpr($expr->left) . ' === ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' == ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_NE:
-                    return '(' . $this->compileExpr($expr->left) . ' !== ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' != ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_BITWISE_AND:
-                    return '(' . $this->compileExpr($expr->left) . ' & ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' & ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_BITWISE_OR:
-                    return '(' . $this->compileExpr($expr->left) . ' | ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' | ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_BITWISE_XOR:
-                    return '(' . $this->compileExpr($expr->left) . ' ^ ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' ^ ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LOGICAL_AND:
-                    return '(' . $this->compileExpr($expr->left) . ' && ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' && ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LOGICAL_OR:
-                    return '(' . $this->compileExpr($expr->left) . ' || ' . $this->compileExpr($expr->right) . ')';
+                    return new CompiledExpr('(' . $left->toValue() . ' || ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_COMMA:
-                    return $this->compileExpr($expr->left) . ', ' . $this->compileExpr($expr->right);
+                    return $right->withCurrent($left->value . ', ' . $right->value);
+                case Expr\BinaryOperator::KIND_ASSIGN:
+                    $rightVal = $right->value;
+                    if ($right->type != $left->type && $right->type->pointer) {
+                        $rightVal = 'FFI::cast("' . $left->type->rawValue . str_repeat('*', $left->type->pointer) . '", ' . $rightVal . ')';
+                    }
+                    if ($left->type->pointer === 0 && $right->type->pointer === 0 && $left->type->isChar && !$right->type->isChar) {
+                        $rightVal = '\chr(' . $rightVal . ')';
+                    }
+                    return $left->withCurrent('(' . $left->value . ' = ' . $rightVal . ')');
+            }
+        }
+        if ($expr instanceof Expr\CallExpr) {
+            $args = [];
+            foreach ($expr->args as $arg) {
+                $args[] = $this->compileExpr($arg)->value;
+            }
+            if ($expr->fn instanceof Expr\DeclRefExpr && isset($this->knownFunctions[$expr->fn->name])) {
+                $func = $this->knownFunctions[$expr->fn->name];
+                $functionType = $func->type;
+                while ($functionType instanceof Type\ExplicitAttributedType) {
+                    $functionType = $functionType->parent;
+                }
+                $type = $this->compileType($functionType->return);
+                return new CompiledExpr('$this->' . (isset($this->knownCompiledFunctions[$expr->fn->name]) ? self::COMPILED_PREFIX : 'ffi->') . $expr->fn->name . '(' . implode(', ', $args) . ')', $type);
+            } else {
+                // TODO improve type of dynamic functions
+                $fn = $this->compileExpr($expr->fn);
+                return $fn->withCurrent('(' . $fn->value . ')(' . implode(', ', $args) . ')', -1);
             }
         }
         if ($expr instanceof Expr\DeclRefExpr) {
             // lookup to determine if it's a constant or not
             if (isset($this->defines[$expr->name])) {
-                return 'self::' . $expr->name;
+                return new CompiledExpr('self::' . $expr->name);
             }
-            // todo: validate this better
-            return '$' . $expr->name;
+            if (isset($this->localVariableTypes[$expr->name])) {
+                return new CompiledExpr('$' . $expr->name, $this->localVariableTypes[$expr->name]);
+            }
+            if (isset($this->globalVariableTypes[$expr->name])) {
+                $var = $this->globalVariableTypes[$expr->name];
+                return new CompiledExpr('$this->ffi->' . $expr->name, $var);
+            }
+            throw new \LogicException('Found unknown variable ' . $expr->name);
+        }
+        if ($expr instanceof Expr\CastExpr) {
+            $type = $this->compileType($expr->type->type);
+            $op = $this->compileExpr($expr->expr);
+            if ($type->value === 'void' && $type->pointer === 0) {
+                return $op;
+            }
+            if ($type->pointer === 0) {
+                return new CompiledExpr('((' . $this->toPHPType($type) . ') ' . $op->toValue() . ')');
+            }
+            return new CompiledExpr('$this->ffi->cast("' . $type->value . str_repeat('*', $type->pointer) . '", ' . $op->value . ')', $type);
+        }
+        if ($expr instanceof Expr\DimFetchExpr) {
+            $op = $this->compileExpr($expr->expr, isAssign: $isAssign);
+            $dim = $this->compileExpr($expr->dimension)->value;
+            return $op->withCurrent($isAssign || !$op->type->isChar ? $op->value . '[' . $dim . ']' : '\ord(' . $op->value . '[' . $dim . '])', -1);
+        }
+        if ($expr instanceof Expr\StructRefExpr) {
+            $op = $this->compileExpr($expr->expr);
+            $type = $this->records[$op->type->value][$expr->memberName];
+            return new CompiledExpr('(' . $op->value . ')->' . $expr->memberName, $type);
+        }
+        if ($expr instanceof Expr\StringLiteral) {
+            return new CompiledExpr('$this->__allocCachedString(' . $this->formatString($expr->value) . ')', new CompiledType('int', 1, true));
         }
         var_dump($expr);
     }
@@ -374,62 +576,64 @@ enum_decl:
     private const NATIVE_TYPES = [
         'int',
         'float',
-        '_Bool',
-        'string',
-        'array',
     ];
 
-    public function compileType(Type $type): string {
+    public function compileType(Type $type): CompiledType {
+        if ($type instanceof Type\PointerType || $type instanceof Type\ArrayType) {
+            $compiled = $this->compileType($type->parent);
+            ++$compiled->pointer;
+            return $compiled;
+        }
         if ($type instanceof Type\TypedefType) {
             $name = $type->name;
 restart:
             if (in_array($name, self::INT_TYPES)) {
-                return 'int';
+                return new CompiledType('int', isChar: $name === 'char', rawValue: $type->name);
             }
             if (in_array($name, self::FLOAT_TYPES)) {
-                return 'float';
+                return new CompiledType('float', rawValue: $type->name);
             }
             if (isset($this->resolver[$name])) {
                 $name = $this->resolver[$name];
                 goto restart;
             }
-            return $name;
+            return new CompiledType($name);
         } elseif ($type instanceof Type\BuiltinType && $type->name === 'void') {
-            return 'void';
+            return new CompiledType('void');
         } elseif ($type instanceof Type\BuiltinType && in_array($type->name, self::INT_TYPES)) {
-            return 'int';
+            return new CompiledType('int', isChar: $type->name === 'char', rawValue: $type->name);
         } elseif ($type instanceof Type\BuiltinType && in_array($type->name, self::FLOAT_TYPES)) {
-            return 'float';
+            return new CompiledType('float', rawValue: $type->name);
         } elseif ($type instanceof Type\TagType\EnumType) {
-            return 'int';
-        } elseif ($type instanceof Type\PointerType) {
-            // special case
-            if ($type->parent instanceof Type\BuiltinType && $type->parent->name === 'char') {
-                // it's a string
-                return 'string';
-            } elseif ($type->parent instanceof Type\AttributedType && $type->parent->parent instanceof Type\BuiltinType && $type->parent->parent->name === 'char') {
-                // const char*
-                return 'string';
-            }
-            return $this->compileType($type->parent) . '_ptr';
-        } elseif ($type instanceof Type\ExplicitAttributedType) {
-            if ($type->kind === Type\ExplicitAttributedType::KIND_CONST) {
-                // we can omit const from our compilation
-                return $this->compileType($type->parent);
-            } elseif ($type->kind === Type\ExplicitAttributedType::KIND_EXTERN) {
-                return $this->compileType($type->parent);
-            }
+            return new CompiledType('int');
+        } elseif ($type instanceof Type\AttributedType) {
+            // TODO check which kinds need special handling
+            return $this->compileType($type->parent);
         } elseif ($type instanceof Type\TagType\RecordType) {
             if ($type->decl->name !== null) {
-                return $type->decl->name;
+                return new CompiledType($type->decl->name);
             }
-        } elseif ($type instanceof Type\ArrayType\ConstantArrayType) {
-            return 'array';
-        } elseif ($type instanceof Type\ArrayType\IncompleteArrayType) {
-            return 'array';
+        } elseif ($type instanceof Type\ParenType) {
+            return $this->compileType($type->parent);
+        } elseif ($type instanceof Type\FunctionType\FunctionProtoType) {
+            // TODO preserve fact that it's a function type
+            return $this->compileType($type->return);
         }
         var_dump($type);
         throw new \LogicException('Not implemented how to handle type yet: ' . get_class($type));
+    }
+
+    public function toPHPType(CompiledType $type): string {
+        if ($type->pointer > 0) {
+            // special case
+            if ($type->isChar) {
+                // it's a string
+                return 'string' . ($type->pointer === 1 ? '_' : '') . str_repeat('_ptr', $type->pointer - 1);
+            }
+            return $type->value . str_repeat('_ptr', $type->pointer);
+        } else {
+            return $type->value;
+        }
     }
 
     public function compileDeclClass(Decl $decl, string $className): array {
@@ -488,6 +692,10 @@ restart:
         }
         if ($name === 'string_') {
             $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
+            $return[] = '    public static function persistent(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
+            $return[] = '    public static function owned(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
+            $return[] = '    public static function persistentZero(string $string): self { return self::persistent("$string\0"); }';
+            $return[] = '    public static function ownedZero(string $string): self { return self::owned("$string\0"); }';
         }
         $return[] = '    public static function getType(): string { return ' . var_export($ptrName, true) . '; }';
         $return[] = '}';
@@ -542,4 +750,30 @@ restart:
         return $result;
     }
 
+    private function recurseAnonymousFieldTypes(string $recordName, Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl $decl, array &$records) {
+        foreach ($decl->fields ?? [] as $field) {
+            if ($field->type) {
+                if ($field->type instanceof Type\TagType\RecordType && $field->type->decl->name === null) {
+                    $this->recurseAnonymousFieldTypes($recordName, $field->type->decl, $records);
+                } else {
+                    $records[$recordName][$field->name] = $this->compileType($field->type);
+                }
+            }
+        }
+    }
+
+    protected function buildRecordFieldTypeMap(array $decls): array {
+        $records = [];
+        foreach ($decls as $decl) {
+            if ($decl instanceof Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl) {
+                $this->recurseAnonymousFieldTypes($decl->name, $decl, $records);
+            }
+            if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
+                if ($decl->type instanceof Type\TagType\RecordType) {
+                    $this->recurseAnonymousFieldTypes($decl->name, $decl->type->decl, $records);
+                }
+            }
+        }
+        return $records;
+    }
 }

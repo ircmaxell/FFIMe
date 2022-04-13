@@ -17,6 +17,7 @@ class test {
 char *getFoo();
 \';
     private FFI $ffi;
+    private array $__literalStrings = [];
     const __%s__ = 1;
     const __LP64__ = 1;
     const __GNUC_VA_LIST = 1;
@@ -66,8 +67,22 @@ char *getFoo();
             default: return $this->ffi->$name;
         }
     }
-    public function setFoo(?string $p0): void {
-        $this->ffi->setFoo($p0);
+    public function __allocCachedString(string $str): FFI\\CData {
+        return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();
+    }
+    public function setFoo(string_ | null | string | array $value): void {
+        if (\\is_string($value)) {
+            $value = string_::ownedZero($value)->getData();
+        } elseif (\\is_array($value)) {
+            $_ = $this->ffi->new("char[" . \\count($value) . "]");
+            foreach (\\array_values($value) as $_k => $_v) {
+                $_[$_k] = $_v;
+            }
+            $value = $_;
+        } else {
+            $value = $value->getData();
+        }
+        $this->ffi->setFoo($value);
     }
     public function getFoo(): ?string_ {
         $result = $this->ffi->getFoo();
@@ -82,6 +97,10 @@ class string_ implements itest {
     public function equals(string_ $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr { return new string_ptr(FFI::addr($this->data)); }
     public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }
+    public static function persistent(string $string): self { $str = new self(FFI::new("char[" . \\strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \\strlen($string)); return $str; }
+    public static function owned(string $string): self { $str = new self(FFI::new("char[" . \\strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \\strlen($string)); return $str; }
+    public static function persistentZero(string $string): self { return self::persistent("$string\\0"); }
+    public static function ownedZero(string $string): self { return self::owned("$string\\0"); }
     public static function getType(): string { return \'char*\'; }
 }
 class string_ptr implements itest {
@@ -170,7 +189,7 @@ class void_ptr_ptr_ptr implements itest {
 
     public function setUp(): void {
         $this->lib = new class(
-            PHP_OS_FAMILY === "Darwin" ? "/usr/lib/system/libsystem_platform.dylib" : "/lib/x86_64-linux-gnu/libc.so.6",
+            PHP_OS_FAMILY === "Darwin" ? "/usr/lib/libSystem.B.dylib" : "/lib/x86_64-linux-gnu/libc.so.6",
             [
                 __DIR__,
                 __DIR__ . '/../include'

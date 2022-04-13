@@ -20,6 +20,7 @@ intmax_t foo(intmax_t a);
 extern uintmax_t blah();
 ';
     private FFI $ffi;
+    private array $__literalStrings = [];
     const __%s__ = 1;
     const __LP64__ = 1;
     const __GNUC_VA_LIST = 1;
@@ -69,8 +70,11 @@ extern uintmax_t blah();
             default: return $this->ffi->$name;
         }
     }
-    public function foo(?int $p0): ?int {
-        $result = $this->ffi->foo($p0);
+    public function __allocCachedString(string $str): FFI\CData {
+        return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();
+    }
+    public function foo(int | null $a): ?int {
+        $result = $this->ffi->foo($a);
         return $result;
     }
     public function blah(): ?int {
@@ -86,6 +90,10 @@ class string_ implements itest {
     public function equals(string_ $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr { return new string_ptr(FFI::addr($this->data)); }
     public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }
+    public static function persistent(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
+    public static function owned(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
+    public static function persistentZero(string $string): self { return self::persistent("$string\0"); }
+    public static function ownedZero(string $string): self { return self::owned("$string\0"); }
     public static function getType(): string { return 'char*'; }
 }
 class string_ptr implements itest {
