@@ -5,15 +5,27 @@ namespace FFIMe;
 class CompiledExpr
 {
     public string $value;
+    public bool $cdata;
     public CompiledType $type;
 
-    public function __construct(string $value, ?CompiledType $type = null) {
+    public function __construct(string $value, ?CompiledType $type = null, bool $cdata = false) {
         $this->value = $value;
         $this->type = $type ?? new CompiledType('int');
+        $this->cdata = $cdata;
     }
 
-    public function toValue() {
-        return $this->type->pointer ? '(' . $this->value . ')->cdata' : $this->value;
+    public function toValue(?CompiledType $type = null) {
+        $val = $this->value;
+        if ($type && $this->type != $type) {
+            if ($this->type->pointer) {
+                $val = '$this->ffi->cast("' . $type->rawValue . str_repeat('*', $type->pointer) . '", ' . $val . ')';
+            } elseif ($this->type->isChar != $type->isChar) {
+                $val = '\chr(' . $val . ')';
+            }
+        } else {
+            $type = $this->type;
+        }
+        return $this->cdata && !$type->pointer ? '(' . $val . ')->cdata' : $val;
     }
 
     public function withCurrent(string $newExpr, int $modifyPointer = 0) {
@@ -22,6 +34,6 @@ class CompiledExpr
             $type = clone $this->type;
             $type->pointer += $modifyPointer;
         }
-        return new self($newExpr, $type);
+        return new self($newExpr, $type, $this->cdata);
     }
 }

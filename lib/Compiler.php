@@ -89,11 +89,11 @@ class Compiler {
         $results = [];
         foreach ($decls as $decl) {
             if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
-                $return = $this->toPHPType($this->compileType($decl->type));
-                if (in_array($return, self::NATIVE_TYPES)) {
+                $return = $this->compileType($decl->type);
+                if ($return->isNative) {
                     $results[] = "case " . var_export($decl->name, true) . ": return \$this->ffi->{$decl->name};";
                 } else {
-                    $results[] = "case " . var_export($decl->name, true) . ": \$tmp = \$this->ffi->{$decl->name}; return \$tmp === null ? null : new $return(\$tmp);";
+                    $results[] = "case " . var_export($decl->name, true) . ": \$tmp = \$this->ffi->{$decl->name}; return \$tmp === null ? null : new " . $this->toPHPType($return) . "(\$tmp);";
                 }
             }
         }
@@ -166,23 +166,23 @@ class Compiler {
             foreach ($params as $idx => $param) {
                 $callParams[] = '$' . ($functionType->paramNames[$idx] ?: "_$idx");
             }
-            if ($returnType !== 'void') {
+            if ($returnType->value !== 'void') {
                 $return[] = '        $result = $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
-                if (in_array($returnType, self::NATIVE_TYPES)) {
+                if ($returnType->isNative) {
                     $return[] = '        return $result;';
                 } else {
-                    $return[] = '        return $result === null ? null : new ' . $returnType . '($result);';
+                    $return[] = '        return $result === null ? null : new ' . $this->toPHPType($returnType) . '($result);';
                 }
             } else {
                 $return[] = '        $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
             }
             $return[] = "    }";
 
-            $nullableReturnType = $returnType === 'void' ? 'void' : '?' . (in_array($returnType, self::NATIVE_TYPES) ? $returnType : 'FFI\CData');
+            $nullableReturnType = $returnType->value === 'void' ? 'void' : '?' . ($returnType->isNative ? $returnType->value : 'FFI\CData');
             $paramSignature = [];
             foreach ($params as $idx => $param) {
                 $varname = $functionType->paramNames[$idx] ?: "_$idx";
-                $paramSignature[] = (in_array($param->value, self::NATIVE_TYPES) && $param->pointer === 0 ? $param->value : 'FFI\CData') . ' $' . $varname;
+                $paramSignature[] = ($param->isNative ? $param->value : 'FFI\CData') . ' $' . $varname;
             }
             $return[] = "    private function " . self::COMPILED_PREFIX . "{$def->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
             $return = array_merge($return, $this->compileStmt($def->stmts));
@@ -237,15 +237,9 @@ class Compiler {
         foreach ($stmt->declarations->declarations as $decl) {
             if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
                 $varType = $this->compileType($decl->type);
+                $result[] = '$' . $decl->name . ' = $this->ffi->new("' . $varType->rawValue . str_repeat('*', $varType->pointer) . '")';
                 if ($decl->initializer) {
-                    $expr = $this->compileExpr($decl->initializer);
-                    $val = $expr->value;
-                    if ($expr->type != $varType && $expr->type->pointer) {
-                        $val = '$this->ffi->cast("' . $varType->rawValue . str_repeat('*', $varType->pointer) . '", ' . $val . ')';
-                    }
-                    $result[] = '$' . $decl->name . ' = ' . $val;
-                } elseif ($varType->pointer) {
-                    $result[] = '$' . $decl->name . ' = $this->ffi->new("' . $varType->rawValue . str_repeat('*', $varType->pointer) . '")';
+                    $result[] = ($varType->isNative ? '$' . $decl->name . '->cdata' : 'FFI::addr($' . $decl->name . ')[0]') . ' = ' . $this->compileExpr($decl->initializer)->toValue($varType);
                 }
                 $this->localVariableTypes[$decl->name] = $varType;
             } else {
@@ -264,12 +258,12 @@ class Compiler {
             foreach ($params as $idx => $param) {
                 $callParams[] = '$' . ($functionType->paramNames[$idx] ?: "_$idx");
             }
-            if ($returnType !== 'void') {
+            if ($returnType->value !== 'void') {
                 $return[] = '        $result = $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
-                if (in_array($returnType, self::NATIVE_TYPES)) {
+                if ($returnType->isNative) {
                     $return[] = '        return $result;';
                 } else {
-                    $return[] = '        return $result === null ? null : new ' . $returnType . '($result);';
+                    $return[] = '        return $result === null ? null : new ' . $this->toPHPType($returnType) . '($result);';
                 }
             } else {
                 $return[] = '        $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
@@ -317,9 +311,9 @@ enum_decl:
         while ($functionType instanceof Type\ExplicitAttributedType) {
             $functionType = $functionType->parent;
         }
-        $returnType = $this->toPHPType($this->compileType($functionType->return));
+        $returnType = $this->compileType($functionType->return);
         $params = $this->compileParameters($functionType->params);
-        $nullableReturnType = $returnType === 'void' ? 'void' : '?' . $returnType;
+        $nullableReturnType = $returnType->value === 'void' ? 'void' : '?' . $this->toPHPType($returnType);
         $paramSignature = [];
         foreach ($params as $idx => $param) {
             $varname = $functionType->paramNames[$idx] ?: "_$idx";
@@ -339,12 +333,12 @@ enum_decl:
                 $return[] = '        ' . ($hasIf ? '} else' : '') . 'if (\is_array($' . $varname . ')) {';
                 $return[] = '            $_ = $this->ffi->new("' . $param->rawValue . str_repeat("*", $param->pointer - 1) . '[" . \count($' . $varname . ') . "]");';
                 $return[] = '            foreach (\array_values($' . $varname . ') as $_k => $_v) {';
-                $return[] = '                $_[$_k] = $_v' . ($param->pointer == 1 && in_array($param->value, self::NATIVE_TYPES) ? '' : '->getData()') . ';';
+                $return[] = '                $_[$_k] = $_v' . ($param->pointer == 1 && $param->baseTypeIsNative() ? '' : '->getData()') . ';';
                 $return[] = '            }';
                 $return[] = '            $' . $varname . ' = $_;';
                 $hasIf = true;
             }
-            if (!in_array($param->value, self::NATIVE_TYPES) || $param->pointer > 0) {
+            if (!$param->isNative) {
                 if ($hasIf) {
                     $return[] = '        } else {';
                 }
@@ -394,13 +388,13 @@ enum_decl:
                 case Expr\UnaryOperator::KIND_LOGICAL_NOT:
                     return new CompiledExpr('(!' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_POSTDEC:
-                    return $op->withCurrent('(' . $op->value . '--)');
+                    return $op->withCurrent('(' . $op->toValue() . '--)');
                 case Expr\UnaryOperator::KIND_POSTINC:
-                    return $op->withCurrent('(' . $op->value . '++)');
+                    return $op->withCurrent('(' . $op->toValue() . '++)');
                 case Expr\UnaryOperator::KIND_PREDEC:
-                    return $op->withCurrent('(--' . $op->value . ')');
+                    return $op->withCurrent('(--' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_PREINC:
-                    return $op->withCurrent('(++' . $op->value . ')');
+                    return $op->withCurrent('(++' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_ADDRESS_OF:
                     return $op->withCurrent('FFI::addr(' . $op->value . ')', 1);
                 case Expr\UnaryOperator::KIND_DEREF:
@@ -418,9 +412,17 @@ enum_decl:
             $right = $this->compileExpr($expr->right);
             switch ($expr->kind) {
                 case Expr\BinaryOperator::KIND_ADD:
-                    return $left->withCurrent('(' . $left->value . ' + ' . $right->toValue() . ')');
+                    if ($left->type->pointer) {
+                        return $left->withCurrent('FFI::addr(' . $left->value . '[' . $right->toValue() . '])');
+                    } else {
+                        return new CompiledExpr('(' . $left->toValue() . ' + ' . $right->toValue() . ')');
+                    }
                 case Expr\BinaryOperator::KIND_SUB:
-                    return !$left->type->pointer === !$right->type->pointer ? new CompiledExpr('(' . $left->value . ' - ' . $right->value . ')') : $left->withCurrent('(' . $left->value . ' - ' . $right->toValue() . ')');
+                    if (!$left->type->pointer !== !$right->type->pointer) {
+                        return $left->withCurrent('FFI::addr(' . $left->value . '[-' . $right->toValue() . '])');
+                    } else {
+                        return new CompiledExpr('(' . $left->toValue() . ' - ' . $right->toValue() . ')');
+                    }
                 case Expr\BinaryOperator::KIND_MUL:
                     return new CompiledExpr('(' . $left->toValue() . ' * ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_DIV:
@@ -456,14 +458,7 @@ enum_decl:
                 case Expr\BinaryOperator::KIND_COMMA:
                     return $right->withCurrent($left->value . ', ' . $right->value);
                 case Expr\BinaryOperator::KIND_ASSIGN:
-                    $rightVal = $right->value;
-                    if ($right->type != $left->type && $right->type->pointer) {
-                        $rightVal = 'FFI::cast("' . $left->type->rawValue . str_repeat('*', $left->type->pointer) . '", ' . $rightVal . ')';
-                    }
-                    if ($left->type->pointer === 0 && $right->type->pointer === 0 && $left->type->isChar && !$right->type->isChar) {
-                        $rightVal = '\chr(' . $rightVal . ')';
-                    }
-                    return $left->withCurrent('(' . $left->value . ' = ' . $rightVal . ')');
+                    return $left->withCurrent('(' . ($expr->left instanceof Expr\DimFetchExpr || !$left->type->pointer ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' = ' . $right->toValue($left->type) . ')');
             }
         }
         if ($expr instanceof Expr\CallExpr) {
@@ -491,11 +486,11 @@ enum_decl:
                 return new CompiledExpr('self::' . $expr->name);
             }
             if (isset($this->localVariableTypes[$expr->name])) {
-                return new CompiledExpr('$' . $expr->name, $this->localVariableTypes[$expr->name]);
+                return new CompiledExpr('$' . $expr->name, $this->localVariableTypes[$expr->name], cdata: true);
             }
             if (isset($this->globalVariableTypes[$expr->name])) {
                 $var = $this->globalVariableTypes[$expr->name];
-                return new CompiledExpr('$this->ffi->' . $expr->name, $var);
+                return new CompiledExpr('$this->ffi->' . $expr->name, $var, cdata: true);
             }
             throw new \LogicException('Found unknown variable ' . $expr->name);
         }
@@ -505,23 +500,23 @@ enum_decl:
             if ($type->value === 'void' && $type->pointer === 0) {
                 return $op;
             }
-            if ($type->pointer === 0) {
+            if ($type->pointer === 0 && !$op->cdata) {
                 return new CompiledExpr('((' . $this->toPHPType($type) . ') ' . $op->toValue() . ')');
             }
-            return new CompiledExpr('$this->ffi->cast("' . $type->value . str_repeat('*', $type->pointer) . '", ' . $op->value . ')', $type);
+            return new CompiledExpr('$this->ffi->cast("' . $type->value . str_repeat('*', $type->pointer) . '", ' . $op->value . ')', $type, cdata: true);
         }
         if ($expr instanceof Expr\DimFetchExpr) {
             $op = $this->compileExpr($expr->expr, isAssign: $isAssign);
-            $dim = $this->compileExpr($expr->dimension)->value;
-            return $op->withCurrent($isAssign || !$op->type->isChar ? $op->value . '[' . $dim . ']' : '\ord(' . $op->value . '[' . $dim . '])', -1);
+            $dim = $this->compileExpr($expr->dimension)->toValue();
+            return $op->withCurrent($op->value . '[' . $dim . ']', -1);
         }
         if ($expr instanceof Expr\StructRefExpr) {
             $op = $this->compileExpr($expr->expr);
             $type = $this->records[$op->type->value][$expr->memberName];
-            return new CompiledExpr('(' . $op->value . ')->' . $expr->memberName, $type);
+            return new CompiledExpr('(' . $op->value . ')->' . $expr->memberName, $type, cdata: true);
         }
         if ($expr instanceof Expr\StringLiteral) {
-            return new CompiledExpr('$this->__allocCachedString(' . $this->formatString($expr->value) . ')', new CompiledType('int', 1, true));
+            return new CompiledExpr('$this->__allocCachedString(' . $this->formatString($expr->value) . ')', new CompiledType('int', 1, true), cdata: true);
         }
         var_dump($expr);
     }
@@ -582,6 +577,7 @@ enum_decl:
         if ($type instanceof Type\PointerType || $type instanceof Type\ArrayType) {
             $compiled = $this->compileType($type->parent);
             ++$compiled->pointer;
+            $compiled->isNative = false;
             return $compiled;
         }
         if ($type instanceof Type\TypedefType) {
