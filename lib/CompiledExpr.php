@@ -17,23 +17,29 @@ class CompiledExpr
     public function toValue(?CompiledType $type = null) {
         $val = $this->value;
         if ($type && $this->type != $type) {
-            if ($this->type->pointer) {
-                $val = '$this->ffi->cast("' . $type->rawValue . str_repeat('*', $type->pointer) . '", ' . $val . ')';
-            } elseif ($this->type->isChar != $type->isChar) {
+            if ($this->type->indirections) {
+                $val = '$this->ffi->cast("' . $type->toValue() . '", ' . $val . ')';
+            } elseif (($this->type->rawValue === 'char') !== ($type->rawValue === 'char')) {
                 $val = '\chr(' . $val . ')';
             }
         } else {
             $type = $this->type;
         }
-        return $this->cdata && !$type->pointer ? '(' . $val . ')->cdata' : $val;
+        return $this->cdata && $type->isNative ? '(' . $val . ')->cdata' : $val;
     }
 
     public function withCurrent(string $newExpr, int $modifyPointer = 0) {
         $type = $this->type;
+        $cdata = $this->cdata;
         if ($modifyPointer) {
-            $type = clone $this->type;
-            $type->pointer += $modifyPointer;
+            if ($modifyPointer < 0) {
+                $indirections = array_slice($type->indirections, 1, 0);
+            } else {
+                $indirections = [];
+            }
+            $type = new CompiledType($type->value, $indirections, $type->rawValue);
+            $cdata = !$type->isNative;
         }
-        return new self($newExpr, $type, $this->cdata);
+        return new self($newExpr, $type, $cdata);
     }
 }

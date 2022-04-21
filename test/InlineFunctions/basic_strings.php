@@ -2,7 +2,7 @@
 
 namespace FFIMe\Test\InlineFunctions;
 
-use FFIMe\Test\InlineFunctions\generated\void_ptr;
+use FFIMe\Test\InlineFunctions\generated\BasicStrings\void_ptr;
 
 class BasicStrings extends InlineTestcase {
     public function testBasicStringManipulation() {
@@ -25,7 +25,7 @@ static inline char *getUppercaseString(char *str) {
 }
 HEADER);
 
-        $testCase = new generated\BasicStrings;
+        $testCase = new generated\BasicStrings\Defs;
         $str = $testCase->getUppercaseString("lower case string");
         $this->assertSame('len: 17 str: LOWER CASE STRING', $str->toString());
         $testCase->free(new void_ptr($str->getData()));

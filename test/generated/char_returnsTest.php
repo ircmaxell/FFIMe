@@ -10,6 +10,7 @@ class char_returnsTest extends TestCase {
 
     const EXPECTED = '<?php namespace %s;
 use FFI;
+use test\\double;
 interface itest {}
 class test {
     const SOFILE = \'%s\';
@@ -70,7 +71,7 @@ char *LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
     public function __allocCachedString(string $str): FFI\\CData {
         return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();
     }
-    public function LLVMGetModuleIdentifier(LLVMModuleRef | null $M, int_ptr | null | array $Len): ?string_ {
+    public function LLVMGetModuleIdentifier(LLVMModuleRef | null $M, size_t_ptr | null | array $Len): ?string_ {
         $M = $M->getData();
         if (\\is_array($Len)) {
             $_ = $this->ffi->new("size_t[" . \\count($Len) . "]");
@@ -126,33 +127,6 @@ class string_ptr_ptr_ptr implements itest {
     public function deref(int $n = 0): string_ptr_ptr { return new string_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return \'char****\'; }
 }
-class int_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(int_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): int_ptr_ptr { return new int_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): int { return new int($this->data[$n]); }
-    public static function getType(): string { return \'int*\'; }
-}
-class int_ptr_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(int_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): int_ptr_ptr_ptr { return new int_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): int_ptr { return new int_ptr($this->data[$n]); }
-    public static function getType(): string { return \'int**\'; }
-}
-class int_ptr_ptr_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(int_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): int_ptr_ptr_ptr_ptr { return new int_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): int_ptr_ptr { return new int_ptr_ptr($this->data[$n]); }
-    public static function getType(): string { return \'int***\'; }
-}
 class void_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
@@ -179,50 +153,55 @@ class void_ptr_ptr_ptr implements itest {
     public function deref(int $n = 0): void_ptr_ptr { return new void_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return \'void***\'; }
 }
-class LLVMModuleRef implements itest {
+class void_ptr_ptr_ptr_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
     public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr { return new LLVMModuleRef_ptr(FFI::addr($this->data)); }
-    public static function getType(): string { return \'LLVMModuleRef\'; }
+    public function equals(void_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): void_ptr_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): void_ptr_ptr_ptr { return new void_ptr_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return \'void****\'; }
 }
-class LLVMModuleRef_ptr implements itest {
+class size_t_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
     public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr { return new LLVMModuleRef_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef { return new LLVMModuleRef($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef*\'; }
+    public function equals(size_t_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): size_t_ptr_ptr { return new size_t_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): size_t { return new size_t($this->data[$n]); }
+    public static function getType(): string { return \'size_t*\'; }
 }
-class LLVMModuleRef_ptr_ptr implements itest {
+class size_t_ptr_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
     public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef_ptr { return new LLVMModuleRef_ptr($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef**\'; }
+    public function equals(size_t_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): size_t_ptr_ptr_ptr { return new size_t_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): size_t_ptr { return new size_t_ptr($this->data[$n]); }
+    public static function getType(): string { return \'size_t**\'; }
 }
-class LLVMModuleRef_ptr_ptr_ptr implements itest {
+class size_t_ptr_ptr_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
     public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef_ptr_ptr { return new LLVMModuleRef_ptr_ptr($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef***\'; }
+    public function equals(size_t_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): size_t_ptr_ptr_ptr_ptr { return new size_t_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): size_t_ptr_ptr { return new size_t_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return \'size_t***\'; }
 }
-class LLVMModuleRef_ptr_ptr_ptr_ptr implements itest {
+class size_t_ptr_ptr_ptr_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
     public function getData(): FFI\\CData { return $this->data; }
-    public function equals(LLVMModuleRef_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): LLVMModuleRef_ptr_ptr_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): LLVMModuleRef_ptr_ptr_ptr { return new LLVMModuleRef_ptr_ptr_ptr($this->data[$n]); }
-    public static function getType(): string { return \'LLVMModuleRef****\'; }
-}';
+    public function equals(size_t_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): size_t_ptr_ptr_ptr_ptr_ptr { return new size_t_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): size_t_ptr_ptr_ptr { return new size_t_ptr_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return \'size_t****\'; }
+}
+class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef");
+class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef_ptr");
+class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr_ptr_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef_ptr_ptr");
+class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr_ptr_ptr_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef_ptr_ptr_ptr");';
 
     protected FFIMe $lib;
     protected Printer $printer;

@@ -10,6 +10,7 @@ class enum_self_referencesTest extends TestCase {
 
     const EXPECTED = '<?php namespace %s;
 use FFI;
+use test\\double;
 interface itest {}
 class test {
     const SOFILE = \'%s\';
@@ -130,33 +131,6 @@ class string_ptr_ptr_ptr implements itest {
     public function deref(int $n = 0): string_ptr_ptr { return new string_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return \'char****\'; }
 }
-class int_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(int_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): int_ptr_ptr { return new int_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): int { return new int($this->data[$n]); }
-    public static function getType(): string { return \'int*\'; }
-}
-class int_ptr_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(int_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): int_ptr_ptr_ptr { return new int_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): int_ptr { return new int_ptr($this->data[$n]); }
-    public static function getType(): string { return \'int**\'; }
-}
-class int_ptr_ptr_ptr implements itest {
-    private FFI\\CData $data;
-    public function __construct(FFI\\CData $data) { $this->data = $data; }
-    public function getData(): FFI\\CData { return $this->data; }
-    public function equals(int_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): int_ptr_ptr_ptr_ptr { return new int_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): int_ptr_ptr { return new int_ptr_ptr($this->data[$n]); }
-    public static function getType(): string { return \'int***\'; }
-}
 class void_ptr implements itest {
     private FFI\\CData $data;
     public function __construct(FFI\\CData $data) { $this->data = $data; }
@@ -182,6 +156,15 @@ class void_ptr_ptr_ptr implements itest {
     public function addr(): void_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
     public function deref(int $n = 0): void_ptr_ptr { return new void_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return \'void***\'; }
+}
+class void_ptr_ptr_ptr_ptr implements itest {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(void_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): void_ptr_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): void_ptr_ptr_ptr { return new void_ptr_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return \'void****\'; }
 }';
 
     protected FFIMe $lib;

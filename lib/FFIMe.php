@@ -182,7 +182,7 @@ class FFIMe {
                 if (isset($this->symbols[$declaration->name]) || isset($this->symbols["_{$declaration->name}"])) {
                     $result[] = $declaration;
                 } else {
-                    $this->warning("Skipping {$declaration->name}, not found in object file");
+                    array_unshift($this->definitionAst, $declaration);
                 }
             } else {
                 $result[] = $declaration;

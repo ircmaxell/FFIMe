@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "a1ea26431b50563153afc0ae5dc934bb",
+    "content-hash": "e4cdd95b081421d57185fea964ad8b6a",
     "packages": [
         {
             "name": "ircmaxell/php-c-parser",
@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-c-parser.git",
-                "reference": "ff872e70990339f25cc1e90d49f6d2d7c546ce76"
+                "reference": "982148498998ca793a670a25ab0b220c7f943a0f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/ff872e70990339f25cc1e90d49f6d2d7c546ce76",
-                "reference": "ff872e70990339f25cc1e90d49f6d2d7c546ce76",
+                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/982148498998ca793a670a25ab0b220c7f943a0f",
+                "reference": "982148498998ca793a670a25ab0b220c7f943a0f",
                 "shasum": ""
             },
             "require": {
@@ -53,7 +53,7 @@
                 "issues": "https://github.com/ircmaxell/php-c-parser/issues",
                 "source": "https://github.com/ircmaxell/php-c-parser/tree/master"
             },
-            "time": "2022-04-10T14:45:30+00:00"
+            "time": "2022-04-19T21:38:59+00:00"
         },
         {
             "name": "ircmaxell/php-object-symbolresolver",
@@ -61,12 +61,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-object-symbolresolver.git",
-                "reference": "16ae0291f362e477e32f8c937ddc551c163d6408"
+                "reference": "56586647c73033bf9e858a996c4703a031fb3ec6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-object-symbolresolver/zipball/16ae0291f362e477e32f8c937ddc551c163d6408",
-                "reference": "16ae0291f362e477e32f8c937ddc551c163d6408",
+                "url": "https://api.github.com/repos/ircmaxell/php-object-symbolresolver/zipball/56586647c73033bf9e858a996c4703a031fb3ec6",
+                "reference": "56586647c73033bf9e858a996c4703a031fb3ec6",
                 "shasum": ""
             },
             "require": {
@@ -98,7 +98,7 @@
                 "issues": "https://github.com/ircmaxell/php-object-symbolresolver/issues",
                 "source": "https://github.com/ircmaxell/php-object-symbolresolver/tree/master"
             },
-            "time": "2022-03-28T22:26:42+00:00"
+            "time": "2022-04-14T14:56:00+00:00"
         }
     ],
     "packages-dev": [
@@ -1892,7 +1892,7 @@
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=7.4"
+        "php": ">=8.0"
     },
     "platform-dev": [],
     "plugin-api-version": "2.1.0"

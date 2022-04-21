@@ -14,6 +14,7 @@ extern void something(B b);
 --EXPECTF--
 <?php namespace %s;
 use FFI;
+use test\double;
 interface itest {}
 class test {
     const SOFILE = '%s';
@@ -132,6 +133,41 @@ class string_ptr_ptr_ptr implements itest {
     public function deref(int $n = 0): string_ptr_ptr { return new string_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return 'char****'; }
 }
+class void_ptr implements itest {
+    private FFI\CData $data;
+    public function __construct(FFI\CData $data) { $this->data = $data; }
+    public function getData(): FFI\CData { return $this->data; }
+    public function equals(void_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): void_ptr_ptr { return new void_ptr_ptr(FFI::addr($this->data)); }
+    public static function getType(): string { return 'void*'; }
+}
+class void_ptr_ptr implements itest {
+    private FFI\CData $data;
+    public function __construct(FFI\CData $data) { $this->data = $data; }
+    public function getData(): FFI\CData { return $this->data; }
+    public function equals(void_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): void_ptr_ptr_ptr { return new void_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): void_ptr { return new void_ptr($this->data[$n]); }
+    public static function getType(): string { return 'void**'; }
+}
+class void_ptr_ptr_ptr implements itest {
+    private FFI\CData $data;
+    public function __construct(FFI\CData $data) { $this->data = $data; }
+    public function getData(): FFI\CData { return $this->data; }
+    public function equals(void_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): void_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): void_ptr_ptr { return new void_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return 'void***'; }
+}
+class void_ptr_ptr_ptr_ptr implements itest {
+    private FFI\CData $data;
+    public function __construct(FFI\CData $data) { $this->data = $data; }
+    public function getData(): FFI\CData { return $this->data; }
+    public function equals(void_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): void_ptr_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): void_ptr_ptr_ptr { return new void_ptr_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return 'void****'; }
+}
 class int_ptr implements itest {
     private FFI\CData $data;
     public function __construct(FFI\CData $data) { $this->data = $data; }
@@ -159,29 +195,12 @@ class int_ptr_ptr_ptr implements itest {
     public function deref(int $n = 0): int_ptr_ptr { return new int_ptr_ptr($this->data[$n]); }
     public static function getType(): string { return 'int***'; }
 }
-class void_ptr implements itest {
+class int_ptr_ptr_ptr_ptr implements itest {
     private FFI\CData $data;
     public function __construct(FFI\CData $data) { $this->data = $data; }
     public function getData(): FFI\CData { return $this->data; }
-    public function equals(void_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): void_ptr_ptr { return new void_ptr_ptr(FFI::addr($this->data)); }
-    public static function getType(): string { return 'void*'; }
-}
-class void_ptr_ptr implements itest {
-    private FFI\CData $data;
-    public function __construct(FFI\CData $data) { $this->data = $data; }
-    public function getData(): FFI\CData { return $this->data; }
-    public function equals(void_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): void_ptr_ptr_ptr { return new void_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): void_ptr { return new void_ptr($this->data[$n]); }
-    public static function getType(): string { return 'void**'; }
-}
-class void_ptr_ptr_ptr implements itest {
-    private FFI\CData $data;
-    public function __construct(FFI\CData $data) { $this->data = $data; }
-    public function getData(): FFI\CData { return $this->data; }
-    public function equals(void_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
-    public function addr(): void_ptr_ptr_ptr_ptr { return new void_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
-    public function deref(int $n = 0): void_ptr_ptr { return new void_ptr_ptr($this->data[$n]); }
-    public static function getType(): string { return 'void***'; }
+    public function equals(int_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr_ptr_ptr_ptr { return new int_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): int_ptr_ptr_ptr { return new int_ptr_ptr_ptr($this->data[$n]); }
+    public static function getType(): string { return 'int****'; }
 }

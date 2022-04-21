@@ -7,7 +7,8 @@ use FFIMe\FFIMe;
 abstract class InlineTestcase extends \PHPUnit\Framework\TestCase {
     public function compile($header): void {
         $classname = substr(strrchr(get_class($this), '\\'), 1);
-        $headerfile = __DIR__ . '/generated/' . $classname . '.h';
+        @mkdir(__DIR__ . '/generated/' . $classname);
+        $headerfile = __DIR__ . '/generated/' . $classname . '/defs.h';
         file_put_contents($headerfile, $header);
 
         $ffi = new FFIMe(
@@ -18,7 +19,7 @@ abstract class InlineTestcase extends \PHPUnit\Framework\TestCase {
         );
         $ffi->include($headerfile);
 
-        $phpfile = __DIR__ . '/generated/' . $classname . '.php';
-        $ffi->codeGen(__NAMESPACE__ . '\\generated\\'. $classname, $phpfile);
+        $phpfile = __DIR__ . '/generated/' . $classname . '/defs.php';
+        $ffi->codeGen(__NAMESPACE__ . '\\generated\\'. $classname . '\\Defs', $phpfile);
     }
 }
