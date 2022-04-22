@@ -170,9 +170,9 @@ class Compiler {
                     // compileInitializer completes incomplete array types
                     $initializer = $decl->initializer instanceof Expr\InitializerExpr && $decl->initializer->explicitType === null ? $this->compileInitializer($varType, $decl->initializer->initializers)->value : $this->compileExpr($decl->initializer)->toValue($varType);
                 }
-                $result[] = '        $this->' . $decl->name . ' = $this->ffi->new("' . $varType->toValue() . '")';
+                $ctor[] = '        $this->' . $decl->name . ' = $this->ffi->new("' . $varType->toValue() . '");';
                 if ($decl->initializer) {
-                    $result[] = '        ' . ($varType->isNative ? '$this->' . $decl->name . '->cdata' : 'FFI::addr($this->' . $decl->name . ')[0]') . ' = ' . $initializer;
+                    $ctor[] = '        ' . ($varType->isNative ? '$this->' . $decl->name . '->cdata' : 'FFI::addr($this->' . $decl->name . ')[0]') . ' = ' . $initializer . ';';
                 }
             }
         }
@@ -771,7 +771,7 @@ enum_decl:
                 case Expr\BinaryOperator::KIND_COMMA:
                     return $right->withCurrent($left->value . ', ' . $right->value);
                 case Expr\BinaryOperator::KIND_ASSIGN:
-                    return $left->withCurrent('(' . ($expr->left instanceof Expr\DimFetchExpr || !$left->type->indirections() ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' = ' . $right->toValue($left->type) . ')');
+                    return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' = ' . $right->toValue($left->type) . ')');
             }
         }
         if ($expr instanceof Expr\CallExpr) {
@@ -803,7 +803,7 @@ enum_decl:
             }
             if (isset($this->globalVariableTypes[$expr->name])) {
                 $var = $this->globalVariableTypes[$expr->name];
-                return new CompiledExpr('$this-> ' . (isset($this->compiledGlobalVariables[$expr->name]) ? '' : 'ffi->') . $expr->name, $var, cdata: true);
+                return new CompiledExpr('$this->' . (isset($this->compiledGlobalVariables[$expr->name]) ? '' : 'ffi->') . $expr->name, $var, cdata: true);
             }
             throw new \LogicException('Found unknown variable ' . $expr->name);
         }
