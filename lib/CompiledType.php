@@ -6,14 +6,17 @@ class CompiledType
 {
     public string $value;
     public string $rawValue;
+    /** @var int[]|null[]|false[] */
     public array $indirections;
     public bool $isNative;
 
+    /** @param int[]|null[]|false[] $indirections */
     public function __construct(string $value, array $indirections = [], ?string $rawValue = null) {
         $this->value = $value;
         $this->indirections = $indirections;
         $this->rawValue = $rawValue ?? $value;
         $this->isNative = !$indirections && $this->baseTypeIsNative();
+        $this->functionArgs = [];
     }
 
     public function indirections() {
@@ -33,6 +36,6 @@ class CompiledType
     }
 
     public function baseTypeIsNative() {
-        return $this->value === 'int' || $this->value === 'float';
+        return $this->functionArgs === [] && ($this->value === 'int' || $this->value === 'float');
     }
 }

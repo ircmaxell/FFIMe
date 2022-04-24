@@ -14,19 +14,30 @@ class Compiler {
 
     const COMPILED_PREFIX = "_ffi_internal_";
 
+    /** @var string[] */
     private array $defines;
+    /** @var string[] */
     private array $resolver;
     /** @var CompiledType[] */
     private array $localVariableTypes = [];
+    /** @var CompiledType[] */
     private array $globalVariableTypes = [];
     private array $compiledGlobalVariables = [];
     /** @var CompiledType[][] */
     private array $records = [];
+    /** @var int[][] */
     private array $recordBitfieldSizes = [];
+    /** @var Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl[] */
     private array $knownFunctions = [];
+    /** @var Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl[] */
     private array $knownCompiledFunctions = [];
+    /** @var string[] */
     private array $usedBuiltinTypes = [];
 
+    /** @param Decl[] $decls
+     *  @param Decl[] $definitions
+     *  @param string[] $defines
+     */
     public function compile(string $soFile, array $decls, array $definitions, array $defines, string $className): string {
         $this->defines = $defines;
         $this->resolver = $this->buildResolver($decls);
@@ -130,6 +141,9 @@ class Compiler {
         return implode("\n", $class);
     }
 
+    /** @param Decl[] $decls
+     *  @return string[]
+     */
     public function compileCases(array $decls): array {
         $results = [];
         foreach ($decls as $decl) {
@@ -145,6 +159,9 @@ class Compiler {
         return $results;
     }
 
+    /** @param Decl[] $decls
+     *  @return string[]
+     */
     public function compileCaseDefs(array $decls): array {
         $results = [];
         foreach ($decls as $decl) {
@@ -160,6 +177,9 @@ class Compiler {
         return $results;
     }
 
+    /** @param Decl[] $decls
+     *  @return string[]
+     */
     protected function compileConstructor(array $decls): array {
         $ctor[] = '    public function __construct(string $pathToSoFile = self::SOFILE) {';
         $ctor[] = '        $this->ffi = FFI::cdef(self::HEADER_DEF, $pathToSoFile);';
@@ -217,13 +237,15 @@ class Compiler {
 
     ';
     }
-    
+
+    /** @param Decl[] $decls */
     public function compileDeclsToCode(array $decls): string {
         // TODO
         $printer = new Printer\C;
         return $printer->printNodes($decls, 0);
     }
 
+    /** @return string[] */
     public function compileDef(Decl $def): array {
         $this->localVariableTypes = [];
 
@@ -275,6 +297,7 @@ class Compiler {
         return $return;
     }
 
+    /** @return string[] */
     public function compileStmt(Stmt $stmt, $level = 2): array {
         $result = [];
         if ($stmt instanceof Stmt\CompoundStmt) {
@@ -318,6 +341,7 @@ class Compiler {
         return $result;
     }
 
+    /** @return string[] */
     public function compileDeclStmt(Stmt\DeclStmt $stmt): array {
         $result = [];
         foreach ($stmt->declarations->declarations as $decl) {
@@ -340,6 +364,7 @@ class Compiler {
     }
 
     // as a side effect, we are completing incomplete array types here
+    /** @param Expr\Initializer\InitializerElement[] $initializers */
     public function compileInitializer(CompiledType $type, array $initializers): ?CompiledExpr {
         // generator traversing a type and yielding all possible designators
         $generateImplicitDesignators = function (CompiledType $activeType, string $compiledDesignator = "", int $indirectionIndex = 0, int $implicitNestingIndex = 0) use ($type, &$generateImplicitDesignators) {
@@ -443,7 +468,8 @@ class Compiler {
 
         $initializerArgs = [];
         $initializerAssignments = [];
-        ($compile = function (CompiledType $type, array $initializers, string $compiledDesignator = "", int $indirectionIndex = 0) use (&$compile, &$initializerArgs, &$initializerAssignments, $generateDesignators, $generateImplicitDesignators) {
+
+        ($compile = /** @param Expr\Initializer\InitializerElement[] $initializers */ function (CompiledType $type, array $initializers, string $compiledDesignator = "", int $indirectionIndex = 0) use (&$compile, &$initializerArgs, &$initializerAssignments, $generateDesignators, $generateImplicitDesignators) {
             $designatorGenerator = $generateImplicitDesignators($type, indirectionIndex: $indirectionIndex);
             foreach ($initializers as $initializerIndex => $initializerExpr) {
                 if ($initializerExpr->designators) {
@@ -481,6 +507,7 @@ class Compiler {
         return new CompiledExpr('(static function ($cdata, ' . implode(", ", array_keys($initializerArgs)) . ') { ' . implode(" ", $initializerAssignments) . ' return $cdata; })($this->ffi->new("' . $type->toValue() . '"), ' . implode(", ", $initializerArgs) . ')');
     }
 
+    /** @return string[] */
     public function compileDecl(Decl $declaration): array {
         $return = [];
         if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
@@ -537,6 +564,7 @@ enum_decl:
         return $return;
     }
 
+    /** @return string[] */
     public function compileFunctionStart(Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl $decl): array {
         $this->knownFunctions[$decl->name] = $decl;
         $functionType = $decl->type;
@@ -842,6 +870,9 @@ enum_decl:
         var_dump($expr);
     }
 
+    /** @param Type[] $params
+     *  @return string[]
+     */
     public function compileParameters(array $params): array {
         if (empty($params)) {
             return [];
@@ -849,7 +880,7 @@ enum_decl:
             return [];
         }
         $return = [];
-        foreach ($params as $idx => $param) {
+        foreach ($params as $param) {
             $return[] =  $this->compileType($param);
         }
         return $return;
@@ -889,7 +920,10 @@ enum_decl:
         'long double',
     ];
 
-    private function groupNativeTypesOfSameSize(array $types) {
+    /** @param string[] $types
+     *  @return string[][]
+     */
+    private function groupNativeTypesOfSameSize(array $types): array {
         $grouped = [];
         foreach ($types as $type) {
             if ($type !== 'char') { // special cased as string
@@ -994,6 +1028,7 @@ restart:
         }
     }
 
+    /** @return string[] */
     public function compileDeclClass(Decl $decl): array {
         $returns = [];
         if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
@@ -1012,8 +1047,8 @@ restart:
         }
         return $returns;
     }
-    
 
+    /** @return string[] */
     protected function compileDeclClassImpl(string $name, string $ptrName, string $className): array {
         $return = [];
         $return[] = "class {$name} implements i{$className} {";
@@ -1061,6 +1096,9 @@ restart:
         return $return;
     }
 
+    /** @param Decl[] $decls
+     *  @return string[]
+     */
     protected function buildResolver(array $decls): array {
         $toLookup = [];
         $result = [];
@@ -1111,7 +1149,8 @@ restart:
         return $result;
     }
 
-    private function recurseAnonymousFieldTypes(string $recordName, Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl $decl, array &$records, array &$bitfieldSizes) {
+    /** @param CompiledType[][] $records */
+    private function recurseAnonymousFieldTypes(string $recordName, Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl $decl, array &$records, array &$bitfieldSizes): void {
         $records[$recordName] ??= [];
         foreach ($decl->fields ?? [] as $field) {
             if ($field->type) {
@@ -1127,6 +1166,9 @@ restart:
         }
     }
 
+    /** @param Decl[] $decls
+     *  @return array{CompiledType[][], int[][]}
+     */
     protected function buildRecordFieldTypeMap(array $decls): array {
         $records = [];
         $bitfieldSizes = [];

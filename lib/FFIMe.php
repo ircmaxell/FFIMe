@@ -7,6 +7,7 @@ namespace FFIMe;
 use PHPCParser\Context;
 use PHPCParser\CParser;
 use PHPCParser\Node\Decl;
+use PHPCParser\PreProcessor\Token;
 use PHPObjectSymbolResolver\Parser as ObjectParser;
 
 
@@ -54,19 +55,23 @@ class FFIMe {
 
     private string $sofile;
 
+    /** @var string[] */
     private array $code = [];
 
-    private array $ast = [];
-    private array $numericDefines = [];
+    /** @var Decl[] contains declarations of exported symbols and typedefs */
+    private array $declarationAst = [];
+    /** @var Decl[] contains definitions, i.e. functions with statement bodies, non-exported variables */
     private array $definitionAst = [];
+    /** @var string[] */
+    private array $numericDefines = [];
 
     private Compiler $compiler;
     private Context $context;
     private CParser $cparser;
-    
+
+    /** @var string[] exported symbols */
     private array $symbols;
 
-    private \FFI $ffi;
     private bool $built = false;
 
     const DEFAULT_SO_SEARCH_PATHS = [
@@ -74,6 +79,9 @@ class FFIMe {
         '/usr/lib',
     ];
 
+    /** @param string[] $headerSearchPaths
+     *  @param string[] $soSearchPaths
+     */
     public function __construct(string $sharedObjectFile, array $headerSearchPaths = [], array $soSearchPaths = self::DEFAULT_SO_SEARCH_PATHS) {
         $this->sofile = $this->findSOFile($sharedObjectFile, $soSearchPaths);
         $this->context = new Context($headerSearchPaths);
@@ -93,15 +101,15 @@ class FFIMe {
     }
 
     public function defineInt(string $identifier, int $value): void {
-        $this->context->define($identifier, [new Token(Token::NUMBER, (string) $value, 'php')]);
+        $this->context->define($identifier, new Token(Token::NUMBER, (string) $value, 'php'));
     }
 
     public function defineIdentifier(string $identifier, string $value): void {
-        $this->context->define($identifier, [new Token(Token::IDENTIFIER, $value, 'php')]);
+        $this->context->define($identifier, new Token(Token::IDENTIFIER, $value, 'php'));
     }
 
     public function defineString(string $identifier, string $value): void {
-        $this->context->define($identifier, [new Token(Token::LITERAL, $value, 'php')]);
+        $this->context->define($identifier, new Token(Token::LITERAL, $value, 'php'));
     }
 
     public function include(string $header): self {
@@ -116,6 +124,7 @@ class FFIMe {
         echo "[Warning] $message\n";
     }
 
+    /** @param string class to code map */
     public function getCode(): array {
         return $this->code;
     }
@@ -147,9 +156,10 @@ class FFIMe {
             return;
         }
         $this->numericDefines = $this->context->getNumericDefines();
-        $this->code[$className] = $this->compiler->compile($this->sofile, $this->ast, $this->definitionAst, $this->numericDefines, $className);
+        $this->code[$className] = $this->compiler->compile($this->sofile, $this->declarationAst, $this->definitionAst, $this->numericDefines, $className);
     }
-    
+
+    /** @param string[] $searchPaths */
     private function findSOFile(string $filename, array $searchPaths): string {
         if (is_file($filename)) {
             // no searching needed
@@ -171,7 +181,7 @@ class FFIMe {
 
     protected function filterSymbolDeclarations(): void {
         $result = [];
-        foreach ($this->ast as $declaration) {
+        foreach ($this->declarationAst as $declaration) {
             if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
                 if (isset($this->symbols[$declaration->name]) || isset($this->symbols["_{$declaration->name}"])) {
                     $result[] = $declaration;
@@ -188,9 +198,10 @@ class FFIMe {
                 $result[] = $declaration;
             }
         }
-        $this->ast = $result;
+        $this->declarationAst = $result;
     }
 
+    /** @param Decl[] $declarations */
     protected function filterDeclarations(array $declarations) {
         $result = [];
         foreach ($declarations as $declaration) {
@@ -225,6 +236,6 @@ class FFIMe {
                 throw new \LogicException('Unknown declaration type to skip/ignore: ' . get_class($declaration));
             }
         }
-        $this->ast = array_merge($this->ast, $result);
+        $this->declarationAst = array_merge($this->declarationAst, $result);
     }
 }

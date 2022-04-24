@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-c-parser.git",
-                "reference": "982148498998ca793a670a25ab0b220c7f943a0f"
+                "reference": "c7af802f0731e97f504c5d7df055be261a9ec733"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/982148498998ca793a670a25ab0b220c7f943a0f",
-                "reference": "982148498998ca793a670a25ab0b220c7f943a0f",
+                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/c7af802f0731e97f504c5d7df055be261a9ec733",
+                "reference": "c7af802f0731e97f504c5d7df055be261a9ec733",
                 "shasum": ""
             },
             "require": {
@@ -53,7 +53,7 @@
                 "issues": "https://github.com/ircmaxell/php-c-parser/issues",
                 "source": "https://github.com/ircmaxell/php-c-parser/tree/master"
             },
-            "time": "2022-04-19T21:38:59+00:00"
+            "time": "2022-04-23T23:53:13+00:00"
         },
         {
             "name": "ircmaxell/php-object-symbolresolver",
@@ -61,12 +61,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-object-symbolresolver.git",
-                "reference": "56586647c73033bf9e858a996c4703a031fb3ec6"
+                "reference": "91c29eb5fd95199ca9286053a3f31813efab82ac"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-object-symbolresolver/zipball/56586647c73033bf9e858a996c4703a031fb3ec6",
-                "reference": "56586647c73033bf9e858a996c4703a031fb3ec6",
+                "url": "https://api.github.com/repos/ircmaxell/php-object-symbolresolver/zipball/91c29eb5fd95199ca9286053a3f31813efab82ac",
+                "reference": "91c29eb5fd95199ca9286053a3f31813efab82ac",
                 "shasum": ""
             },
             "require": {
@@ -98,7 +98,7 @@
                 "issues": "https://github.com/ircmaxell/php-object-symbolresolver/issues",
                 "source": "https://github.com/ircmaxell/php-object-symbolresolver/tree/master"
             },
-            "time": "2022-04-14T14:56:00+00:00"
+            "time": "2022-04-24T00:07:17+00:00"
         }
     ],
     "packages-dev": [
