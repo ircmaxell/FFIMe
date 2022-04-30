@@ -14,7 +14,7 @@ class CompiledExpr
         $this->cdata = $cdata;
     }
 
-    public function toValue(?CompiledType $type = null) {
+    public function toValue(?CompiledType $type = null): string {
         $val = $this->value;
         if ($type && $this->type != $type) {
             if ($this->type->indirections) {
@@ -28,7 +28,7 @@ class CompiledExpr
         return $this->cdata && $type->isNative ? '(' . $val . ')->cdata' : $val;
     }
 
-    public function withCurrent(string $newExpr, int $modifyPointer = 0) {
+    public function withCurrent(string $newExpr, int $modifyPointer = 0): self {
         $type = $this->type;
         $cdata = $this->cdata;
         if ($modifyPointer) {

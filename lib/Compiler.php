@@ -33,6 +33,7 @@ class Compiler {
     private array $knownCompiledFunctions = [];
     /** @var string[] */
     private array $usedBuiltinTypes = [];
+    private bool $generateFunctionPtrDefs = false;
 
     /** @param Decl[] $decls
      *  @param Decl[] $definitions
@@ -105,6 +106,12 @@ class Compiler {
         array_push($class, ...$this->compileDeclClassImpl('void_ptr_ptr', 'void**', $className));
         array_push($class, ...$this->compileDeclClassImpl('void_ptr_ptr_ptr', 'void***', $className));
         array_push($class, ...$this->compileDeclClassImpl('void_ptr_ptr_ptr_ptr', 'void****', $className));
+        if ($this->generateFunctionPtrDefs) {
+            array_push($class, ...$this->compileDeclClassImpl('function_type_ptr', '*', $className));
+            array_push($class, ...$this->compileDeclClassImpl('function_type_ptr_ptr', '**', $className));
+            array_push($class, ...$this->compileDeclClassImpl('function_type_ptr_ptr_ptr', '***', $className));
+            array_push($class, ...$this->compileDeclClassImpl('function_type_ptr_ptr_ptr_ptr', '****', $className));
+        }
         $nativeTypeGroupings = array_merge(array_values($this->groupNativeTypesOfSameSize(self::INT_TYPES)), array_values($this->groupNativeTypesOfSameSize(self::FLOAT_TYPES)));
         foreach ($nativeTypeGroupings as $nativeTypeGroup) {
             $firstNativeTypeMatch = null;
@@ -737,7 +744,11 @@ enum_decl:
                 case Expr\UnaryOperator::KIND_PREINC:
                     return $op->withCurrent('(++' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_ADDRESS_OF:
-                    return $op->withCurrent('FFI::addr(' . $op->value . ')', 1);
+                    if ($op->type instanceof CompiledFunctionType && $op->type->indirections() === 0) {
+                        return $op->withCurrent($op->value, 1);
+                    } else {
+                        return $op->withCurrent('FFI::addr(' . $op->value . ')', 1);
+                    }
                 case Expr\UnaryOperator::KIND_DEREF:
                     return $op->withCurrent($isAssign || $op->type->rawValue !== 'char' ? $op->value . '[0]' : '\ord(' . $op->value . '[0])', -1);
                 case Expr\UnaryOperator::KIND_ALIGNOF:
@@ -816,9 +827,11 @@ enum_decl:
                 $type = $this->compileType($functionType->return);
                 return new CompiledExpr('$this->' . (isset($this->knownCompiledFunctions[$expr->fn->name]) ? self::COMPILED_PREFIX : 'ffi->') . $expr->fn->name . '(' . implode(', ', $args) . ')', $type);
             } else {
-                // TODO improve type of dynamic functions
                 $fn = $this->compileExpr($expr->fn);
-                return $fn->withCurrent('(' . $fn->value . ')(' . implode(', ', $args) . ')', -1);
+                if (!($fn->type instanceof CompiledFunctionType)) {
+                    throw new \LogicException('Tried to call non-function type ' . $fn->type->toValue());
+                }
+                return new CompiledExpr('(' . $fn->value . ')(' . implode(', ', $args) . ')', $fn->type->return);
             }
         }
         if ($expr instanceof Expr\DeclRefExpr) {
@@ -828,6 +841,14 @@ enum_decl:
             }
             if (isset($this->localVariableTypes[$expr->name])) {
                 return new CompiledExpr('$' . $expr->name, $this->localVariableTypes[$expr->name], cdata: true);
+            }
+            if (isset($this->knownFunctions[$expr->name])) {
+                $func = $this->knownFunctions[$expr->name];
+                $functionType = $func->type;
+                while ($functionType instanceof Type\ExplicitAttributedType) {
+                    $functionType = $functionType->parent;
+                }
+                return new CompiledExpr('[$this' . (isset($this->knownCompiledFunctions[$expr->name]) ? ', "' .self::COMPILED_PREFIX : '->ffi, "') . $expr->name . '"]', $this->compileType($functionType));
             }
             if (isset($this->globalVariableTypes[$expr->name])) {
                 $var = $this->globalVariableTypes[$expr->name];
@@ -1006,8 +1027,8 @@ restart:
         } elseif ($type instanceof Type\ParenType) {
             return $this->compileType($type->parent);
         } elseif ($type instanceof Type\FunctionType\FunctionProtoType) {
-            // TODO preserve fact that it's a function type
-            return $this->compileType($type->return);
+            $this->generateFunctionPtrDefs = true;
+            return new CompiledFunctionType($this->compileType($type->return),  array_map([$this, 'compileType'], $type->params), $type->isVariadic);
         }
         var_dump($type);
         throw new \LogicException('Not implemented how to handle type yet: ' . get_class($type));
@@ -1053,11 +1074,7 @@ restart:
         $return = [];
         $return[] = "class {$name} implements i{$className} {";
         $return[] = '    private FFI\CData $data;';
-        if (!isset($this->resolver[$name])) {
-            $return[] = '    public function __construct(FFI\CData $data) { $this->data = $data; }';
-        } else {
-            $return[] = '    public function __construct($data) { $tmp = FFI::new(' . var_export($this->resolver[$name], true) . '); $tmp = $data; $this->data = $tmp; }';
-        }
+        $return[] = '    public function __construct(FFI\CData $data) { $this->data = $data; }';
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
         $return[] = '    public function equals(' . $name . ' $other): bool { return $this->data == $other->data; }';
         $nameWithPtr = $name . '_ptr';

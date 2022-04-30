@@ -16,14 +16,13 @@ class CompiledType
         $this->indirections = $indirections;
         $this->rawValue = $rawValue ?? $value;
         $this->isNative = !$indirections && $this->baseTypeIsNative();
-        $this->functionArgs = [];
     }
 
-    public function indirections() {
+    public function indirections(): int {
         return \count($this->indirections);
     }
 
-    public function toValue(?string $compiledBaseType = null) {
+    public function toValue(?string $compiledBaseType = null): string {
         $value = $compiledBaseType ?? $this->rawValue;
         foreach ($this->indirections as $indirection) {
             if ($indirection === null || $indirection === false) {
@@ -35,7 +34,7 @@ class CompiledType
         return $value;
     }
 
-    public function baseTypeIsNative() {
-        return $this->functionArgs === [] && ($this->value === 'int' || $this->value === 'float');
+    public function baseTypeIsNative(): bool {
+        return $this->value === 'int' || $this->value === 'float';
     }
 }
