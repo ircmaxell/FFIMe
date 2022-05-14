@@ -157,6 +157,19 @@ class Compiler {
             array_push($class, ...$this->compileFunctionPtrClassImpl(3));
             array_push($class, ...$this->compileFunctionPtrClassImpl(4));
         }
+        foreach (array_keys($this->usedBuiltinTypes) as $builtinType) {
+            if (str_starts_with($builtinType, "__builtin_")) {
+                for ($i = 0; $i <= 4; ++$i) {
+                    array_push($class, ...$this->compileDeclClassImpl($builtinType . str_repeat('_ptr', $i), new CompiledType($builtinType, array_fill(0, $i, null))));
+                }
+            }
+        }
+        foreach ($this->records as $record => $fields) {
+            $recordClass = strtr($record, " ", "_");
+            for ($i = 0; $i <= 4; ++$i) {
+                array_push($class, ...$this->compileDeclClassImpl($recordClass . str_repeat('_ptr', $i), new CompiledType($record, array_fill(0, $i, null))));
+            }
+        }
         $nativeTypeGroupings = array_merge(array_values($this->groupNativeTypesOfSameSize(self::INT_TYPES)), array_values($this->groupNativeTypesOfSameSize(self::FLOAT_TYPES)));
         foreach ($nativeTypeGroupings as $nativeTypeGroup) {
             $firstNativeTypeMatch = null;
@@ -174,19 +187,6 @@ class Compiler {
                         }
                     }
                 }
-            }
-        }
-        foreach (array_keys($this->usedBuiltinTypes) as $builtinType) {
-            if (str_starts_with($builtinType, "__builtin_")) {
-                for ($i = 0; $i <= 4; ++$i) {
-                    array_push($class, ...$this->compileDeclClassImpl($builtinType . str_repeat('_ptr', $i), new CompiledType($builtinType, array_fill(0, $i, null))));
-                }
-            }
-        }
-        foreach ($this->records as $record => $fields) {
-            $recordClass = strtr($record, " ", "_");
-            for ($i = 0; $i <= 4; ++$i) {
-                array_push($class, ...$this->compileDeclClassImpl($recordClass . str_repeat('_ptr', $i), new CompiledType($record, array_fill(0, $i, null))));
             }
         }
         array_push($class, ...$declClasses);
@@ -1076,14 +1076,15 @@ enum_decl:
         if ($type instanceof Type\TypedefType) {
             $name = $type->name;
 restart:
+            $fullName = $name;
             $name = preg_replace('((.*?)\b(?:(unsigned )|signed )(.+))', "$2$1$3", $name);
             if (in_array($name, self::INT_TYPES)) {
-                $this->usedBuiltinTypes[$name] = true;
-                return new CompiledType('int', rawValue: $name);
+                $this->usedBuiltinTypes[$fullName] = true;
+                return new CompiledType('int', rawValue: $fullName);
             }
             if (in_array($name, self::FLOAT_TYPES)) {
-                $this->usedBuiltinTypes[$name] = true;
-                return new CompiledType('float', rawValue: $name);
+                $this->usedBuiltinTypes[$fullName] = true;
+                return new CompiledType('float', rawValue: $fullName);
             }
             if (str_starts_with($name, "__builtin_")) {
                 $this->usedBuiltinTypes[$name] = true;
@@ -1435,7 +1436,7 @@ restart:
             if ($field->type) {
                 if ($field->type instanceof Type\TagType\RecordType && $field->type->decl->name === null) {
                     $this->recurseAnonymousFieldTypes($recordName, $field->type->decl, $records, $bitfieldSizes);
-                } else {
+                } elseif ($field->name != "") {
                     $records[$recordName][$field->name] = $this->compileType($field->type);
                     if ($field->bitfieldSize) {
                         $bitfieldSizes[$recordName][$field->name] = $this->compileConstantExpr($field->bitfieldSize);

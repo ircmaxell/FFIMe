@@ -169,6 +169,7 @@ class FFIMe {
             // no searching needed
             return $filename; 
         }
+        // Under MacOS dyld (runtime linker) has a cache of specific objects tied to paths, which actually do not exist on disk. They have an equivalent path in the SDK, containing their exported symbol definitions
         if (PHP_OS_FAMILY === 'Darwin' && str_starts_with($filename, '/usr/lib/')) {
             if (is_file(str_replace(".dylib", ".tbd", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk$filename"))) {
                 return $filename;
