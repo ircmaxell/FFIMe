@@ -184,9 +184,9 @@ class Compiler {
             }
         }
         foreach ($this->records as $record => $fields) {
-            $record = strtr($record, " ", "_");
+            $recordClass = strtr($record, " ", "_");
             for ($i = 0; $i <= 4; ++$i) {
-                array_push($class, ...$this->compileDeclClassImpl($record . str_repeat('_ptr', $i), new CompiledType($record, array_fill(0, $i, null))));
+                array_push($class, ...$this->compileDeclClassImpl($recordClass . str_repeat('_ptr', $i), new CompiledType($record, array_fill(0, $i, null))));
             }
         }
         array_push($class, ...$declClasses);
@@ -642,7 +642,7 @@ enum_decl:
         } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
             $this->globalVariableTypes[$declaration->name] = $this->compileType($declaration->type);
         }
-        if (substr($declaration->name ?? "", 0, 2) === '__') {
+        if (str_starts_with($declaration->name ?? "", '__')) {
             return [];
         }
         return $return;
@@ -1208,8 +1208,8 @@ restart:
 
     /** @return string[] */
     protected function compileDeclClassImpl(string $name, CompiledType $type): array {
-        if ($type instanceof CompiledFunctionType && $type->indirections() === 1) {
-            $return[] = "class {$name} extends function_type_ptr {";
+        if ($type instanceof CompiledFunctionType) {
+            $return[] = "class {$name} extends function_type" . str_repeat("_ptr", $type->indirections()) ." {";
             $return[] = '    public function __construct(FFI\CData $data) { parent::__construct($data, ' . $this->linearArrayExport($this->compilePHPFunctionTypeArray($type)) . '); }';
             $return[] = '    public static function getType(): string { return ' . var_export($type->toValue(), true) . '; }';
             $return[] = '}';
@@ -1217,6 +1217,7 @@ restart:
         }
 
         $recordType = $type->indirections() <= 1 && !$type->baseTypeIsNative();
+        $dereferencable = $type->indirections() >= 1 && $name !== 'void_ptr';
 
         if ($recordType && $record = $this->records[$type->value] ?? null) {
             $return[] = '/**';
@@ -1225,7 +1226,7 @@ restart:
             }
             $return[] = ' */';
         }
-        $return[] = "class {$name} implements i{$this->className}" . ($type->indirections() ? ", i{$this->className}_ptr" : "") . " {";
+        $return[] = "class {$name} implements i{$this->className}" . ($type->indirections() ? ", i{$this->className}_ptr" : "") . ($dereferencable ? ", \ArrayAccess" : "") . " {";
         $return[] = '    private FFI\CData $data;';
         $return[] = '    public function __construct(FFI\CData $data) { $this->data = $data; }';
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
@@ -1235,8 +1236,12 @@ restart:
             $nameWithPtr = 'string_ptr';
         }
         $return[] = '    public function addr(): ' . $nameWithPtr . ' { return new '. $nameWithPtr . '(FFI::addr($this->data)); }';
-        if ($type->indirections() >= 1 && $name !== 'void_ptr') {
+        if ($dereferencable) {
             $prior = substr($name, 0, -4);
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetGet($offset): ' . $prior . ' { return $this->deref($offset); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = ' . ($type->indirections() === 1 && $type->baseTypeIsNative() ? $type->rawValue === 'char' ? '\chr($value)' : '$value' : '$value->getData()') . '; }';
             if ($prior === 'string') {
                 $prior = 'string_';
             }
@@ -1309,7 +1314,7 @@ restart:
         $name = "function_type" . str_repeat("_ptr", $indirections);
 
         // function type: [null_or_return_class_name, arg1_class_name, arg2_class_name] - nested function types represented as nested array: ["function_type_ptr(_ptr)*", arg1_class_name, arg2_class_name]
-        $return[] = "class $name implements i{$this->className}, i{$this->className}_ptr {";
+        $return[] = "class $name implements i{$this->className}, i{$this->className}_ptr" . ($indirections > 1 ? ', \ArrayAccess' : "") . " {";
         $return[] = '    private FFI\CData $data;';
         $return[] = '    private array $types;';
         $return[] = '    public function __construct(FFI\CData $data, array $types) { $this->data = $data; $this->types = $types; }';
@@ -1318,6 +1323,10 @@ restart:
         $return[] = '    public function addr(): ' . $name . '_ptr { return new '. $name . '_ptr(FFI::addr($this->data)); }';
         if ($indirections > 1) {
             $prior = substr($name, 0, -4);
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetGet($offset): ' . $prior . ' { return $this->deref($offset); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->deref($offset)->set($value); }';
             $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n], $this->types); }';
             $return[] = '    public function set(void_ptr | ' . $name . ' $value): void {';
             $return[] = '        if ($value instanceof ' . $name . ' && $value->types != $this->types) {';

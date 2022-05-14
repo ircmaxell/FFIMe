@@ -41,16 +41,16 @@ HEADER);
         $str = string_::persistentZero("some str");
         $foo = $testCase->init_foo($str);
 
-        $this->assertSame(0, $foo->getData()->value[0]);
-        $this->assertSame(1, $foo->getData()->value[1]);
-        $this->assertSame(2, $foo->getData()->second_value);
-        $this->assertSame("some str", \FFI::string($foo->getData()->str));
-        $this->assertSame(3, $foo->getData()->bar->val);
-        $this->assertSame(3, $testCase->global_bar->getData()->val);
+        $this->assertSame(0, $foo->value[0]);
+        $this->assertSame(1, $foo->value[1]);
+        $this->assertSame(2, $foo->second_value);
+        $this->assertSame("some str", $foo->str->toString());
+        $this->assertSame(3, $foo->bar->val);
+        $this->assertSame(3, $testCase->global_bar->val);
 
         $testCase->update_foo_bar($foo->addr());
 
-        $this->assertSame(1, $foo->getData()->bar->val);
+        $this->assertSame(1, $foo->bar->val);
 
         \FFI::free($str->getData());
     }
