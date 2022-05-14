@@ -28,6 +28,17 @@ class CompiledExpr
         return $this->cdata && $type->isNative ? '(' . $val . ')->cdata' : $val;
     }
 
+    public function toBool(): string {
+        if ($this->cdata) {
+            if ($this->type->isNative) {
+                return '(' . $this->value . ')->cdata';
+            } else {
+                return '!FFI::isNull(' . $this->value . ')';
+            }
+        }
+        return $this->value;
+    }
+
     public function withCurrent(string $newExpr, int $modifyPointer = 0): self {
         $type = $this->type;
         $cdata = $this->cdata;

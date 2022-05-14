@@ -384,9 +384,17 @@ class Compiler {
                 foreach ($this->compileDeclStmt($stmt) as $declResult) {
                     $result[] = str_repeat(' ', $level * 4) . $declResult . ';';
                 }
+            } elseif ($stmt instanceof Stmt\IfStmt) {
+                $result[] = str_repeat(' ', $level * 4) . 'if (' . $this->compileExpr($stmt->condition)->toBool() . ') {';
+                array_push($result, ...$this->compileStmt($stmt->trueStmt, $level + 1));
+                if ($stmt->falseStmt) {
+                    $result[] = str_repeat(' ', $level * 4) . '} else {';
+                    array_push($result, ...$this->compileStmt($stmt->falseStmt, $level + 1));
+                }
+                $result[] = str_repeat(' ', $level * 4) . '}';
             } elseif ($stmt instanceof Stmt\LoopStmt) {
                 if ($stmt->condition && !$stmt->initStmt && !$stmt->loopExpr) {
-                    $loop = 'while (' . $this->compileExpr($stmt->condition)->value . ')';
+                    $loop = 'while (' . $this->compileExpr($stmt->condition)->toBool() . ')';
                 } else {
                     $loop = 'for (';
                     if ($stmt->initStmt) {
@@ -398,10 +406,10 @@ class Compiler {
                             $loop .= $this->compileExpr($stmt->initStmt)->value;
                         }
                     }
-                    $loop .= ';' . ($stmt->condition ? ' ' . $this->compileExpr($stmt->condition)->value : '') . ';' . ($stmt->loopExpr ? ' ' . $this->compileExpr($stmt->loopExpr)->value : '') . ')';
+                    $loop .= ';' . ($stmt->condition ? ' ' . $this->compileExpr($stmt->condition)->toBool() : '') . ';' . ($stmt->loopExpr ? ' ' . $this->compileExpr($stmt->loopExpr)->value : '') . ')';
                 }
                 $result[] = str_repeat(' ', $level * 4) . $loop . ' {';
-                $result = array_merge($result, $this->compileStmt($stmt->loopStmt, $level + 1));
+                array_push($result, ...$this->compileStmt($stmt->loopStmt, $level + 1));
                 $result[] = str_repeat(' ', $level * 4) . '}';
             } elseif ($stmt instanceof Stmt\AsmStmt) {
                 $result[] = str_repeat(' ', $level * 4) . 'throw new \LogicException("Unsupported assembly statement");';
@@ -794,7 +802,7 @@ enum_decl:
             return $true->withCurrent('(' . $this->compileExpr($expr->cond)->toValue() . ' ? ' . $true->value . ' : ' . $this->compileExpr($expr->ifFalse)->value . ')');
         }
         if ($expr instanceof Expr\UnaryOperator) {
-            $op = $this->compileExpr($expr->expr, isAddrOf: $expr->kind === Expr\UnaryOperator::KIND_ADDRESS_OF);
+            $op = $this->compileExpr($expr->expr, isAssign: $expr->kind === Expr\UnaryOperator::KIND_DEREF && $isAssign, isAddrOf: $expr->kind === Expr\UnaryOperator::KIND_ADDRESS_OF);
             switch ($expr->kind) {
                 case Expr\UnaryOperator::KIND_PLUS:
                     return new CompiledExpr('(+' . $op->toValue() . ')');
@@ -819,7 +827,11 @@ enum_decl:
                         return $op->withCurrent('FFI::addr(' . $op->value . ')', 1);
                     }
                 case Expr\UnaryOperator::KIND_DEREF:
-                    return $op->withCurrent($isAssign || $op->type->rawValue !== 'char' ? $op->value . '[0]' : '\ord(' . $op->value . '[0])', -1);
+                    $value = $op->value;
+                    if ($isAssign && (($expr->expr instanceof Expr\UnaryOperator && in_array($expr->expr->kind, [Expr\UnaryOperator::KIND_PREINC, Expr\UnaryOperator::KIND_POSTINC, Expr\UnaryOperator::KIND_PREDEC, Expr\UnaryOperator::KIND_POSTDEC])) || $expr->expr instanceof Expr\BinaryOperator)) {
+                        $value = "(fn() => $value)()";
+                    }
+                    return $op->withCurrent($isAssign || $op->type->rawValue !== 'char' ? $value . '[0]' : '\ord(' . $value . '[0])', -1);
                 case Expr\UnaryOperator::KIND_ALIGNOF:
                     return new CompiledExpr('FFI::alignof(' . ($op->cdata ? $op->value : '$this->ffi->type(' . $op->value . ')') . ')');
                 case Expr\UnaryOperator::KIND_SIZEOF:
@@ -879,7 +891,7 @@ enum_decl:
                 case Expr\BinaryOperator::KIND_COMMA:
                     return $right->withCurrent($left->value . ', ' . $right->value);
                 case Expr\BinaryOperator::KIND_ASSIGN:
-                    return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' = ' . $right->toValue($left->type) . ')');
+                    return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' = ' . $right->toValue($left->type) . ')');
             }
         }
         if ($expr instanceof Expr\CallExpr) {
@@ -947,7 +959,11 @@ enum_decl:
         if ($expr instanceof Expr\DimFetchExpr) {
             $op = $this->compileExpr($expr->expr, isAssign: $isAssign);
             $dim = $this->compileExpr($expr->dimension)->toValue();
-            return $op->withCurrent($op->value . '[' . $dim . ']', -1);
+            $value = $op->value;
+            if ($isAssign && (($expr->expr instanceof Expr\UnaryOperator && in_array($expr->expr->kind, [Expr\UnaryOperator::KIND_PREINC, Expr\UnaryOperator::KIND_POSTINC, Expr\UnaryOperator::KIND_PREDEC, Expr\UnaryOperator::KIND_POSTDEC])) || $expr->expr instanceof Expr\BinaryOperator)) {
+                $value = "(fn() => $value)()";
+            }
+            return $op->withCurrent($value . '[' . $dim . ']', -1);
         }
         if ($expr instanceof Expr\StructRefExpr) {
             $op = $this->compileExpr($expr->expr);

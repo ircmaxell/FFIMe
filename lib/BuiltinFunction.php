@@ -19,7 +19,7 @@ class BuiltinFunction {
     }
 
     public function print(): array {
-        $return[] = "    public function " . Compiler::COMPILED_PREFIX . $this->name . $this->body;
+        $return[] = "    private function " . Compiler::COMPILED_PREFIX . $this->name . $this->body;
         return $return;
     }
 }
