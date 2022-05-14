@@ -2,10 +2,6 @@
 
 namespace FFIMe\Test\InlineFunctions;
 
-use FFI\CData;
-use FFIMe\Test\InlineFunctions\generated\FunctionPointers\string_;
-use FFIMe\Test\InlineFunctions\generated\void_ptr;
-
 class FunctionPointers extends InlineTestcase {
     public function testFunctionPointerUsage() {
         $this->compile(<<<HEADER
@@ -20,6 +16,10 @@ static inline bar init_bar(int val, char *str) {
     return (bar){ val, str };
 }
 
+static inline bar init_other_bar(int val, char *str) {
+    return (bar){ val, str + val };
+}
+
 static inline void set_bar_ptr() {
     global_bar = &init_bar;
 }
@@ -32,11 +32,11 @@ HEADER);
 
         $testCase = new generated\FunctionPointers\Defs;
 
-        \FFI::addr($testCase->global_bar->getData())[0] = fn(int $val, CData $str): CData => $testCase->init_bar($val, new string_($str))->getData();
-        self::assertSame("foo", $testCase->call_bar(0)->toString());
+        $testCase->global_bar = \Closure::fromCallable([$testCase, 'init_other_bar']);
+        self::assertSame("oo", $testCase->call_bar(1)->toString());
 
         $testCase->set_bar_ptr();
-        self::assertSame("foo", $testCase->call_bar(0)->toString());
+        self::assertSame("foo", $testCase->call_bar(1)->toString());
     }
 }
 

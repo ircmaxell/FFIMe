@@ -3,13 +3,13 @@
 namespace FFIMe;
 
 class CompiledFunctionType extends CompiledType {
-    public ?CompiledType $return;
+    public CompiledType $return;
     /** @var CompiledType[] */
     public array $args;
     public bool $isVariadic;
 
     /** @param CompiledType[] $args */
-    public function __construct(?CompiledType $return, array $args, bool $isVariadic, array $indirections = []) {
+    public function __construct(CompiledType $return, array $args, bool $isVariadic, array $indirections = []) {
         parent::__construct('function type', $indirections);
         $this->return = $return;
         $this->args = $args;

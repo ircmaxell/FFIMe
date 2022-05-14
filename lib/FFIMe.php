@@ -157,6 +157,10 @@ class FFIMe {
         }
         $this->numericDefines = $this->context->getNumericDefines();
         $this->code[$className] = $this->compiler->compile($this->sofile, $this->declarationAst, $this->definitionAst, $this->numericDefines, $className);
+
+        foreach ($this->compiler->warnings as $warning) {
+            $this->warning($warning);
+        }
     }
 
     /** @param string[] $searchPaths */

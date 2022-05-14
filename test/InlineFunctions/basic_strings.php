@@ -19,7 +19,8 @@ static inline char *getUppercaseString(char *str) {
 		upper[i] = toupper(*(str++));
 	}
 	upper[len] = 0;
-	asprintf(&ret, "len: %d str: %s", strlen(upper), upper);
+	ret = malloc(50);
+	sprintf(ret, "len: %d str: %s", strlen(upper), upper);
 	free(upper);
 	return ret;
 }
@@ -28,7 +29,7 @@ HEADER);
         $testCase = new generated\BasicStrings\Defs;
         $str = $testCase->getUppercaseString("lower case string");
         $this->assertSame('len: 17 str: LOWER CASE STRING', $str->toString());
-        $testCase->free(new void_ptr($str->getData()));
+        $testCase->free($str);
     }
 }
 
