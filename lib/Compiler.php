@@ -854,6 +854,25 @@ class Compiler {
         if ($expr instanceof Expr\BinaryOperator) {
             $left = $this->compileExpr($expr->left, isAssign: $expr->kind === Expr\BinaryOperator::KIND_ASSIGN);
             $right = $this->compileExpr($expr->right);
+            $opChar = [
+                    Expr\BinaryOperator::KIND_ADD => '+',
+                    Expr\BinaryOperator::KIND_MUL => '*',
+                    Expr\BinaryOperator::KIND_DIV => '/',
+                    Expr\BinaryOperator::KIND_REM => '%',
+                    Expr\BinaryOperator::KIND_SHL => '<<',
+                    Expr\BinaryOperator::KIND_SHR => '>>',
+                    Expr\BinaryOperator::KIND_LT => '<',
+                    Expr\BinaryOperator::KIND_GT => '>',
+                    Expr\BinaryOperator::KIND_LE => '<=',
+                    Expr\BinaryOperator::KIND_GE => '>=',
+                    Expr\BinaryOperator::KIND_EQ => '==',
+                    Expr\BinaryOperator::KIND_NE => '!=',
+                    Expr\BinaryOperator::KIND_BITWISE_AND => '&',
+                    Expr\BinaryOperator::KIND_BITWISE_OR => '|',
+                    Expr\BinaryOperator::KIND_BITWISE_XOR => '^',
+                    Expr\BinaryOperator::KIND_LOGICAL_AND => '&&',
+                    Expr\BinaryOperator::KIND_LOGICAL_OR => '||',
+                ][$expr->kind & ~Expr\BinaryOperator::KIND_ASSIGN] ?? '';
             switch ($expr->kind) {
                 case Expr\BinaryOperator::KIND_ADD:
                     if ($left->type->indirections()) {
@@ -868,41 +887,27 @@ class Compiler {
                         return new CompiledExpr('(' . $left->toValue() . ' - ' . $right->toValue() . ')');
                     }
                 case Expr\BinaryOperator::KIND_MUL:
-                    return new CompiledExpr('(' . $left->toValue() . ' * ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_DIV:
-                    return new CompiledExpr('(' . $left->toValue() . ' / ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_REM:
-                    return new CompiledExpr('(' . $left->toValue() . ' % ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_SHL:
-                    return new CompiledExpr('(' . $left->toValue() . ' << ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_SHR:
-                    return new CompiledExpr('(' . $left->toValue() . ' >> ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LT:
-                    return new CompiledExpr('(' . $left->toValue() . ' < ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_GT:
-                    return new CompiledExpr('(' . $left->toValue() . ' > ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LE:
-                    return new CompiledExpr('(' . $left->toValue() . ' <= ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_GE:
-                    return new CompiledExpr('(' . $left->toValue() . ' >= ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_EQ:
-                    return new CompiledExpr('(' . $left->toValue() . ' == ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_NE:
-                    return new CompiledExpr('(' . $left->toValue() . ' != ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_BITWISE_AND:
-                    return new CompiledExpr('(' . $left->toValue() . ' & ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_BITWISE_OR:
-                    return new CompiledExpr('(' . $left->toValue() . ' | ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_BITWISE_XOR:
-                    return new CompiledExpr('(' . $left->toValue() . ' ^ ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LOGICAL_AND:
-                    return new CompiledExpr('(' . $left->toValue() . ' && ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_LOGICAL_OR:
-                    return new CompiledExpr('(' . $left->toValue() . ' || ' . $right->toValue() . ')');
+                    return new CompiledExpr('(' . $left->toValue() . ' ' . $opChar . ' ' . $right->toValue() . ')');
                 case Expr\BinaryOperator::KIND_COMMA:
                     return $right->withCurrent($left->value . ', ' . $right->value);
-                case Expr\BinaryOperator::KIND_ASSIGN:
-                    return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' = ' . $right->toValue($left->type) . ')');
+            }
+            if ($expr->kind & Expr\BinaryOperator::KIND_ASSIGN) {
+                return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' ' . $opChar . '= ' . $right->toValue($left->type) . ')');
             }
         }
         if ($expr instanceof Expr\CallExpr) {
