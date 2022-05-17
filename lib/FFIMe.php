@@ -7,6 +7,7 @@ namespace FFIMe;
 use PHPCParser\Context;
 use PHPCParser\CParser;
 use PHPCParser\Node\Decl;
+use PHPCParser\Node\Type;
 use PHPCParser\PreProcessor\Token;
 use PHPObjectSymbolResolver\Parser as ObjectParser;
 
@@ -60,6 +61,8 @@ class FFIMe {
 
     /** @var Decl[] contains declarations of exported symbols and typedefs */
     private array $declarationAst = [];
+    /** @var Decl[] contains declarations of exported symbols which are not in the primary shared objects */
+    private array $skippedDeclarationAst = [];
     /** @var Decl[] contains definitions, i.e. functions with statement bodies, non-exported variables */
     private array $definitionAst = [];
     /** @var string[] */
@@ -156,7 +159,7 @@ class FFIMe {
             return;
         }
         $this->numericDefines = $this->context->getNumericDefines();
-        $this->code[$className] = $this->compiler->compile($this->sofile, $this->declarationAst, $this->definitionAst, $this->numericDefines, $className);
+        $this->code[$className] = $this->compiler->compile($this->sofile, $this->declarationAst, $this->definitionAst, $this->skippedDeclarationAst, $this->numericDefines, $className);
 
         foreach ($this->compiler->warnings as $warning) {
             $this->warning($warning);
@@ -167,7 +170,7 @@ class FFIMe {
     private function findSOFile(string $filename, array $searchPaths): string {
         if (is_file($filename)) {
             // no searching needed
-            return $filename; 
+            return $filename;
         }
         // Under MacOS dyld (runtime linker) has a cache of specific objects tied to paths, which actually do not exist on disk. They have an equivalent path in the SDK, containing their exported symbol definitions
         if (PHP_OS_FAMILY === 'Darwin' && str_starts_with($filename, '/usr/lib/')) {
@@ -184,18 +187,34 @@ class FFIMe {
         throw new \LogicException('Could not find shared object file ' . $filename);
     }
 
+    protected function isExternType(Type $type) {
+        while ($type instanceof Type\AttributedType) {
+            if ($type instanceof Type\ExplicitAttributedType && $type->kind === Type\ExplicitAttributedType::KIND_EXTERN) {
+                return true;
+            }
+            $type = $type->parent;
+        }
+        return false;
+    }
+
     protected function filterSymbolDeclarations(): void {
-        $result = [];
+        $result = $skipped = [];
         foreach ($this->declarationAst as $declaration) {
             if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
                 if (isset($this->symbols[$declaration->name]) || isset($this->symbols["_{$declaration->name}"])) {
                     $result[] = $declaration;
                 } else {
+                    $skipped[] = $declaration;
                     $this->warning("Skipping {$declaration->name}, not found in object file");
                 }
             } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
-                if (isset($this->symbols[$declaration->name]) || isset($this->symbols["_{$declaration->name}"])) {
-                    $result[] = $declaration;
+                if ($this->isExternType($declaration->type)) {
+                    if (isset($this->symbols[$declaration->name]) || isset($this->symbols["_{$declaration->name}"])) {
+                        $result[] = $declaration;
+                    } else {
+                        $skipped[] = $declaration;
+                        $this->warning("Skipping {$declaration->name}, not found in object file");
+                    }
                 } else {
                     array_unshift($this->definitionAst, $declaration);
                 }
@@ -204,6 +223,7 @@ class FFIMe {
             }
         }
         $this->declarationAst = $result;
+        $this->skippedDeclarationAst = $skipped;
     }
 
     /** @param Decl[] $declarations */

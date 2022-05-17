@@ -46,10 +46,13 @@ class Compiler {
      *  @param Decl[] $definitions
      *  @param string[] $defines
      */
-    public function compile(string $soFile, array $decls, array $definitions, array $defines, string $className): string {
+    public function compile(string $soFile, array $decls, array $definitions, array $nonCompiledDeclarations, array $defines, string $className): string {
         $this->defines = $defines;
         $this->resolver = $this->buildResolver($decls);
         [$this->records, $this->recordBitfieldSizes] = $this->buildRecordFieldTypeMap($decls);
+        foreach ($nonCompiledDeclarations as $decl) {
+            $this->collectNonCompiledDeclaration($decl);
+        }
         $parts = explode('\\', $className);
         $class = [];
         if (isset($parts[1])) {
@@ -132,7 +135,7 @@ class Compiler {
             $publicProperties[] = " */";
             array_splice($class, $classStartIndex, 0, $publicProperties);
         }
-        
+
         // we need to compile this early because of the side effects on usedBuiltinTypes
         $declClasses = [];
         foreach ($decls as $decl) {
@@ -586,6 +589,14 @@ class Compiler {
         return new CompiledExpr('(static function ($cdata, ' . implode(", ", array_keys($initializerArgs)) . ') { ' . implode(" ", $initializerAssignments) . ' return $cdata; })($this->ffi->new("' . $type->toValue() . '"), ' . implode(", ", $initializerArgs) . ')');
     }
 
+    public function collectNonCompiledDeclaration(Decl $declaration): void {
+        if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
+            $this->knownFunctions[$declaration->name] = $declaration;
+        } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
+            $this->globalVariableTypes[$declaration->name] = $this->compileType($declaration->type);
+        }
+    }
+
     /** @return string[] */
     public function compileDecl(Decl $declaration): array {
         $return = [];
@@ -616,7 +627,7 @@ class Compiler {
             if ($declaration->name !== null) {
                 $return[] = "    // enum {$declaration->name}";
             }
-enum_decl:
+            enum_decl:
             if ($declaration->fields !== null) {
                 $id = 0;
                 $lastValue = 0;
@@ -945,6 +956,9 @@ enum_decl:
             }
             throw new \LogicException('Found unknown variable ' . $name);
         }
+        if ($expr instanceof Expr\TypeRefExpr) {
+            return new CompiledExpr($this->compileType($expr->type)->toValue());
+        }
         if ($expr instanceof Expr\CastExpr) {
             $type = $this->compileType($expr->type->type);
             $op = $this->compileExpr($expr->expr);
@@ -1075,7 +1089,7 @@ enum_decl:
         }
         if ($type instanceof Type\TypedefType) {
             $name = $type->name;
-restart:
+            restart:
             $fullName = $name;
             $name = preg_replace('((.*?)\b(?:(unsigned )|signed )(.+))', "$2$1$3", $name);
             if (in_array($name, self::INT_TYPES)) {
@@ -1402,7 +1416,7 @@ restart:
          * typedef B C;
          *
          * This will resolve C=>int, B=>int, A=>int
-         * 
+         *
          * It runs a maximum of 50 times (to prevent things that shouldn't be possible, like circular references)
          */
         $runs = 50;
