@@ -844,9 +844,12 @@ class Compiler {
                     }
                     return $op->withCurrent($isAssign || $op->type->rawValue !== 'char' ? $value . '[0]' : '\ord(' . $value . '[0])', -1);
                 case Expr\UnaryOperator::KIND_ALIGNOF:
-                    return new CompiledExpr('FFI::alignof(' . ($op->cdata ? $op->value : '$this->ffi->type(' . $op->value . ')') . ')');
+                    return new CompiledExpr('FFI::alignof(' . ($op->cdata ? $op->value : '$this->ffi->type("' . $op->value . '")') . ')');
                 case Expr\UnaryOperator::KIND_SIZEOF:
-                    return new CompiledExpr('FFI::sizeof(' . ($op->cdata ? $op->value : '$this->ffi->type(' . $op->value . ')') . ')');
+                    if ($expr->expr instanceof Expr\StringLiteral) {
+                        return new CompiledExpr(\strlen($expr->expr->value) + 1);
+                    }
+                    return new CompiledExpr('FFI::sizeof(' . ($op->cdata ? $op->value : '$this->ffi->type("' . $op->value . '")') . ')');
                 default:
                     throw new \LogicException("Unsupported unary operator for library: " . $expr->kind);
             }
