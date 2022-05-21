@@ -28,15 +28,6 @@ class FFIMe {
         'uint64_t',
         'float',
         'double',
-        'uintptr_t',
-        'intptr_t',
-        'size_t',
-        'ssize_t',
-        'ptrdiff_t',
-        'off_t',
-        'va_list',
-        '__builtin_va_list',
-        '__gnuc_va_list',
     ];
 
     const RECORDS_TO_REMOVE = [

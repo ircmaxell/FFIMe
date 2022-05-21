@@ -236,6 +236,78 @@ class void_ptr_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {
     }
     public static function getType(): string { return \'void****\'; }
     public function getDefinition(): string { return static::getType(); }
+}
+class int_ptr implements itest, itest_ptr, \\ArrayAccess {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(int_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr { return new int_ptr_ptr(FFI::addr($this->data)); }
+    #[\\ReturnTypeWillChange] public function offsetGet($offset): int { return $this->deref($offset); }
+    #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
+    #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
+    #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value; }
+    public function deref(int $n = 0): int { return $this->data[$n]; }
+    public function set(int | void_ptr | int_ptr $value): void {
+        if (\\is_scalar($value)) {
+            $this->data[0] = $value;
+        } else {
+            FFI::addr($this->data)[0] = $value->getData();
+        }
+    }
+    public static function getType(): string { return \'int*\'; }
+    public function getDefinition(): string { return static::getType(); }
+}
+class int_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(int_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr_ptr { return new int_ptr_ptr_ptr(FFI::addr($this->data)); }
+    #[\\ReturnTypeWillChange] public function offsetGet($offset): int_ptr { return $this->deref($offset); }
+    #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
+    #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
+    #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value->getData(); }
+    public function deref(int $n = 0): int_ptr { return new int_ptr($this->data[$n]); }
+    public function set(void_ptr | int_ptr_ptr $value): void {
+        FFI::addr($this->data)[0] = $value->getData();
+    }
+    public static function getType(): string { return \'int**\'; }
+    public function getDefinition(): string { return static::getType(); }
+}
+class int_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(int_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr_ptr_ptr { return new int_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    #[\\ReturnTypeWillChange] public function offsetGet($offset): int_ptr_ptr { return $this->deref($offset); }
+    #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
+    #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
+    #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value->getData(); }
+    public function deref(int $n = 0): int_ptr_ptr { return new int_ptr_ptr($this->data[$n]); }
+    public function set(void_ptr | int_ptr_ptr_ptr $value): void {
+        FFI::addr($this->data)[0] = $value->getData();
+    }
+    public static function getType(): string { return \'int***\'; }
+    public function getDefinition(): string { return static::getType(); }
+}
+class int_ptr_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {
+    private FFI\\CData $data;
+    public function __construct(FFI\\CData $data) { $this->data = $data; }
+    public function getData(): FFI\\CData { return $this->data; }
+    public function equals(int_ptr_ptr_ptr_ptr $other): bool { return $this->data == $other->data; }
+    public function addr(): int_ptr_ptr_ptr_ptr_ptr { return new int_ptr_ptr_ptr_ptr_ptr(FFI::addr($this->data)); }
+    #[\\ReturnTypeWillChange] public function offsetGet($offset): int_ptr_ptr_ptr { return $this->deref($offset); }
+    #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
+    #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
+    #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value->getData(); }
+    public function deref(int $n = 0): int_ptr_ptr_ptr { return new int_ptr_ptr_ptr($this->data[$n]); }
+    public function set(void_ptr | int_ptr_ptr_ptr_ptr $value): void {
+        FFI::addr($this->data)[0] = $value->getData();
+    }
+    public static function getType(): string { return \'int****\'; }
+    public function getDefinition(): string { return static::getType(); }
 }';
 
     protected FFIMe $lib;

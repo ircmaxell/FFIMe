@@ -17,7 +17,7 @@ class Compiler {
     private string $className;
     /** @var string[] */
     private array $defines;
-    /** @var string[] */
+    /** @var CompiledType[] */
     private array $resolver;
     /** @var CompiledType[] */
     private array $localVariableTypes = [];
@@ -48,7 +48,7 @@ class Compiler {
      */
     public function compile(string $soFile, array $decls, array $definitions, array $nonCompiledDeclarations, array $defines, string $className): string {
         $this->defines = $defines;
-        $this->resolver = $this->buildResolver($decls);
+        $this->buildResolver($decls);
         [$this->records, $this->recordBitfieldSizes] = $this->buildRecordFieldTypeMap($decls);
         foreach ($nonCompiledDeclarations as $decl) {
             $this->collectNonCompiledDeclaration($decl);
@@ -1080,6 +1080,7 @@ class Compiler {
         'float',
     ];
 
+    // TODO: retain original typedef name for printing types if non-native to have nicer signatures
     public function compileType(Type $type): CompiledType {
         if ($type instanceof Type\PointerType || $type instanceof Type\ArrayType) {
             $compiled = $this->compileType($type->parent);
@@ -1096,10 +1097,8 @@ class Compiler {
             return $compiled;
         }
         if ($type instanceof Type\TypedefType) {
-            $name = $type->name;
-            restart:
-            $fullName = $name;
-            $name = preg_replace('((.*?)\b(?:(unsigned )|signed )(.+))', "$2$1$3", $name);
+            $fullName = $type->name;
+            $name = preg_replace('((.*?)\b(?:(unsigned )|signed )(.+))', "$2$1$3", $fullName);
             if (in_array($name, self::INT_TYPES)) {
                 $this->usedBuiltinTypes[$fullName] = true;
                 return new CompiledType('int', rawValue: $fullName);
@@ -1108,15 +1107,18 @@ class Compiler {
                 $this->usedBuiltinTypes[$fullName] = true;
                 return new CompiledType('float', rawValue: $fullName);
             }
-            if (str_starts_with($name, "__builtin_")) {
+            if (isset($this->resolver[$name])) {
+                $resolvedType = $this->resolver[$name];
+                if ($resolvedType instanceof \Throwable) {
+                    throw $resolvedType;
+                }
+                return clone $resolvedType;
+            }
+            if (str_starts_with($name, "__builtin_") || str_starts_with($name, "__gnuc_")) {
                 $this->usedBuiltinTypes[$name] = true;
                 return new CompiledType($name);
             }
-            if (isset($this->resolver[$name]) && $name !== $this->resolver[$name]) {
-                $name = $this->resolver[$name];
-                goto restart;
-            }
-            return new CompiledType($name);
+            throw new \LogicException("Encountered unknown type $name");
         } elseif ($type instanceof Type\BuiltinType) {
             if ($type->name === 'void') {
                 return new CompiledType('void');
@@ -1398,25 +1400,9 @@ class Compiler {
         return $return;
     }
 
-    /** @param Decl[] $decls
-     *  @return string[]
-     */
-    protected function buildResolver(array $decls): array {
-        $toLookup = [];
-        $result = [];
-        foreach ($decls as $decl) {
-            if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
-                if ($decl->type instanceof Type\TypedefType) {
-                    $toLookup[] = [$decl->name, $decl->type->name];
-                } elseif ($decl->type instanceof Type\TagType\RecordType) {
-                    $result[$decl->name] = isset($decl->type->decl->name) ? ($decl->type->decl->kind === Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl::KIND_UNION ? 'union' : 'struct') . ' ' . $decl->type->decl->name : $decl->name;
-                } elseif ($decl->type instanceof Type\BuiltinType) {
-                    $result[$decl->name] = $decl->type->name;
-                } elseif ($decl->type instanceof Type\TagType\EnumType) {
-                    $result[$decl->name] = 'int';
-                }
-            }
-        }
+    /** @param Decl[] $decls */
+    protected function buildResolver(array $decls): void {
+        $this->resolver = [];
         /**
          * This resolves chained typedefs. For example:
          * typedef int A;
@@ -1424,31 +1410,20 @@ class Compiler {
          * typedef B C;
          *
          * This will resolve C=>int, B=>int, A=>int
-         *
-         * It runs a maximum of 50 times (to prevent things that shouldn't be possible, like circular references)
          */
-        $runs = 50;
-        while ($runs-- > 0 && !empty($toLookup)) {
-            $toRemove = [];
-            for ($i = 0, $n = count($toLookup); $i < $n; $i++) {
-                list($name, $ref) = $toLookup[$i];
-
-                if (isset($result[$ref])) {
-                    $result[$name] = $result[$ref];
-                    $toRemove[] = $i;
+        foreach ($decls as $decl) {
+            if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
+                if ($decl->type instanceof Type\TagType\RecordType) {
+                    $this->resolver[$decl->name] = new CompiledType(isset($decl->type->decl->name) ? ($decl->type->decl->kind === Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl::KIND_UNION ? 'union' : 'struct') . ' ' . $decl->type->decl->name : $decl->name);
+                } else {
+                    try {
+                        $this->resolver[$decl->name] = $this->compileType($decl->type);
+                    } catch (UnsupportedFeatureException $e) {
+                        $this->resolver[$decl->name] = $e;
+                    }
                 }
             }
-            foreach ($toRemove as $index) {
-                unset($toLookup[$index]);
-            }
-            if (empty($toRemove)) {
-                // We removed nothing, so don't bother rerunning
-                break;
-            } else {
-                $toLookup = array_values($toLookup);
-            }
         }
-        return $result;
     }
 
     /** @param CompiledType[][] $records */

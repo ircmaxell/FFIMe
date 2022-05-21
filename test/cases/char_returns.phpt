@@ -73,8 +73,16 @@ char *LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
     public function __allocCachedString(string $str): FFI\CData {
         return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();
     }
-    public function LLVMGetModuleIdentifier(LLVMModuleRef | null $M, void_ptr | size_t_ptr | null | array $Len): ?string_ {
-        $M = $M->getData();
+    public function LLVMGetModuleIdentifier(void_ptr | struct_LLVMOpaqueModule_ptr | null | array $M, void_ptr | size_t_ptr | null | array $Len): ?string_ {
+        if (\is_array($M)) {
+            $_ = $this->ffi->new("struct LLVMOpaqueModule[" . \count($M) . "]");
+            foreach (\array_values($M) as $_k => $_v) {
+                $_[$_k] = $_v->getData();
+            }
+            $M = $_;
+        } else {
+            $M = $M->getData();
+        }
         if (\is_array($Len)) {
             $_ = $this->ffi->new("size_t[" . \count($Len) . "]");
             foreach (\array_values($Len) as $_k => $_v) {
