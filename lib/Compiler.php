@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 namespace FFIMe;
+use PHPCParser\Context;
 use PHPCParser\Node\Decl;
 use PHPCParser\Node\Stmt;
 use PHPCParser\Node\Type;
@@ -47,6 +48,9 @@ class Compiler {
      *  @param string[] $defines
      */
     public function compile(string $soFile, array $decls, array $definitions, array $nonCompiledDeclarations, array $defines, string $className): string {
+        foreach (Context::NUMERICAL_DEFINES as $define => $_) {
+            unset($defines[$define]);
+        }
         $this->defines = $defines;
         $this->buildResolver($decls);
         [$this->records, $this->recordBitfieldSizes] = $this->buildRecordFieldTypeMap($decls);
@@ -348,7 +352,7 @@ class Compiler {
             }
             $return[] = "    }";
 
-            $nullableReturnType = $returnType->value === 'void' ? 'void' : ($returnType->isNative ? $returnType->value : '?FFI\CData');
+            $nullableReturnType = $returnType->value === 'void' && $returnType->indirections() === 0 ? 'void' : ($returnType->isNative ? $returnType->value : '?FFI\CData');
             $paramSignature = [];
             foreach ($params as $idx => $param) {
                 $varname = $functionType->paramNames[$idx] ?: "_$idx";
@@ -380,7 +384,7 @@ class Compiler {
             }
         } else {
             if ($stmt instanceof Stmt\ReturnStmt) {
-                $result[] = str_repeat(' ', $level * 4) . 'return ' . $this->compileExpr($stmt->result)->value . ';';
+                $result[] = str_repeat(' ', $level * 4) . 'return' . ($stmt->result ? ' ' . $this->compileExpr($stmt->result)->value : '') . ';';
             } elseif ($stmt instanceof Expr) {
                 $result[] = str_repeat(' ', $level * 4) . $this->compileExpr($stmt)->value . ';';
             } elseif ($stmt instanceof Stmt\DeclStmt) {
@@ -663,12 +667,12 @@ class Compiler {
     public function compileFunctionStart(Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl $decl): array {
         $this->knownFunctions[$decl->name] = $decl;
         $functionType = $decl->type;
-        while ($functionType instanceof Type\ExplicitAttributedType) {
+        while ($functionType instanceof Type\AttributedType) {
             $functionType = $functionType->parent;
         }
         $returnType = $this->compileType($functionType->return);
         $params = $this->compileParameters($functionType->params);
-        $nullableReturnType = $returnType->value === 'void' ? 'void' : (($returnType->isNative ? '' : '?') . $this->toPHPType($returnType));
+        $nullableReturnType = ((($returnType->value === 'void' && $returnType->indirections() === 0) || $returnType->isNative ? '' : '?') . $this->toPHPType($returnType));
         $paramSignature = [];
         foreach ($params as $idx => $param) {
             $varname = $functionType->paramNames[$idx] ?: "_$idx";
@@ -807,6 +811,11 @@ class Compiler {
             $value = str_replace(['u', 'U', 'l', 'L'], '', $expr->value);
             return new CompiledExpr((string) (int) $value);
         }
+        if ($expr instanceof Expr\FloatLiteral) {
+            // parse out type qualifiers
+            $value = str_replace(['F32', 'F32x', 'F64', 'F128'], '', $expr->value);
+            return new CompiledExpr((string) (float) $value);
+        }
         if ($expr instanceof Expr\AbstractConditionalOperator\ConditionalOperator) {
             // assume this is valid and both of a common type
             $true = $this->compileExpr($expr->ifTrue);
@@ -847,7 +856,7 @@ class Compiler {
                     return new CompiledExpr('FFI::alignof(' . ($op->cdata ? $op->value : '$this->ffi->type("' . $op->value . '")') . ')');
                 case Expr\UnaryOperator::KIND_SIZEOF:
                     if ($expr->expr instanceof Expr\StringLiteral) {
-                        return new CompiledExpr(\strlen($expr->expr->value) + 1);
+                        return new CompiledExpr((string)(\strlen($expr->expr->value) + 1));
                     }
                     return new CompiledExpr('FFI::sizeof(' . ($op->cdata ? $op->value : '$this->ffi->type("' . $op->value . '")') . ')');
                 default:
@@ -918,24 +927,31 @@ class Compiler {
             foreach ($expr->args as $arg) {
                 $args[] = $this->compileExpr($arg)->toValue();
             }
-            if ($expr->fn instanceof Expr\DeclRefExpr && isset($this->knownFunctions[$expr->fn->name])) {
-                $func = $this->knownFunctions[$expr->fn->name];
-                $functionType = $func->type;
-                while ($functionType instanceof Type\ExplicitAttributedType) {
-                    $functionType = $functionType->parent;
+            if ($expr->fn instanceof Expr\DeclRefExpr) {
+                $fn_name = $expr->fn->name;
+                if (isset($this->knownFunctions[$fn_name])) {
+                    retry_builtin:
+                    $func = $this->knownFunctions[$fn_name];
+                    $functionType = $func->type;
+                    while ($functionType instanceof Type\AttributedType) {
+                        $functionType = $functionType->parent;
+                    }
+                    $type = $this->compileType($functionType->return);
+                    return new CompiledExpr('$this->' . (isset($this->knownCompiledFunctions[$fn_name]) ? self::COMPILED_PREFIX : 'ffi->') . $fn_name . '(' . implode(', ', $args) . ')', $type);
+                } elseif (isset(BuiltinFunction::$registry[$fn_name])) {
+                    $this->usedBuiltinFunctions[$fn_name] = true;
+                    return new CompiledExpr('$this->' .self::COMPILED_PREFIX . $fn_name . '(' . implode(', ', $args) . ')', BuiltinFunction::$registry[$fn_name]->type);
+                } elseif (str_starts_with($fn_name, "__builtin_") && isset($this->knownFunctions[substr($fn_name, 10)])) {
+                    $fn_name = substr($fn_name, 10);
+                    goto retry_builtin;
                 }
-                $type = $this->compileType($functionType->return);
-                return new CompiledExpr('$this->' . (isset($this->knownCompiledFunctions[$expr->fn->name]) ? self::COMPILED_PREFIX : 'ffi->') . $expr->fn->name . '(' . implode(', ', $args) . ')', $type);
-            } elseif ($expr->fn instanceof Expr\DeclRefExpr && isset(BuiltinFunction::$registry[$expr->fn->name])) {
-                $this->usedBuiltinFunctions[$expr->fn->name] = true;
-                return new CompiledExpr('$this->' .self::COMPILED_PREFIX . $expr->fn->name . '(' . implode(', ', $args) . ')', BuiltinFunction::$registry[$expr->fn->name]->type);
-            } else {
-                $fn = $this->compileExpr($expr->fn);
-                if (!($fn->type instanceof CompiledFunctionType)) {
-                    throw new \LogicException('Tried to call non-function type ' . $fn->type->toValue());
-                }
-                return new CompiledExpr('(' . $fn->value . ')(' . implode(', ', $args) . ')', $fn->type->return);
             }
+
+            $fn = $this->compileExpr($expr->fn);
+            if (!($fn->type instanceof CompiledFunctionType)) {
+                throw new \LogicException('Tried to call non-function type ' . $fn->type->toValue());
+            }
+            return new CompiledExpr('(' . $fn->value . ')(' . implode(', ', $args) . ')', $fn->type->return);
         }
         if ($expr instanceof Expr\DeclRefExpr) {
             // lookup to determine if it's a constant or not
@@ -949,7 +965,7 @@ class Compiler {
             if (isset($this->knownFunctions[$name])) {
                 $func = $this->knownFunctions[$name];
                 $functionType = $func->type;
-                while ($functionType instanceof Type\ExplicitAttributedType) {
+                while ($functionType instanceof Type\AttributedType) {
                     $functionType = $functionType->parent;
                 }
                 return new CompiledExpr('[$this' . (isset($this->knownCompiledFunctions[$name]) ? ', "' .self::COMPILED_PREFIX : '->ffi, "') . $name . '"]', $this->compileType($functionType));
@@ -961,6 +977,9 @@ class Compiler {
             if (isset(BuiltinFunction::$registry[$name])) {
                 $this->usedBuiltinFunctions[$name] = true;
                 return new CompiledExpr('[$this, "' .self::COMPILED_PREFIX . $name . '"]', BuiltinFunction::$registry[$name]->type);
+            }
+            if ($expr instanceof Expr\FuncName) {
+                return new CompiledExpr('$this->__allocCachedString("' . \array_key_last($this->knownCompiledFunctions) . '")', new CompiledType('int', [null], 'char'), cdata: true);
             }
             throw new \LogicException('Found unknown variable ' . $name);
         }

@@ -24,10 +24,18 @@ class BuiltinFunction {
     }
 }
 
+new BuiltinFunction("__builtin_expect", new CompiledType("int"), '(int $val, int $expected) { return $val; }');
+new BuiltinFunction("__builtin_constant_p", new CompiledType("int"), '(int $val) { return 0; }');
+
 new BuiltinFunction("__builtin_bswap16", new CompiledType("int", rawValue: "uint16_t"), '(int $val) { return ($val >> 8) | (($val << 8) & 0xff00); }');
 new BuiltinFunction("__builtin_bswap32", new CompiledType("int", rawValue: "uint32_t"), '(int $val) { return (($val & 0xff000000) >> 24) | (($val & 0xff0000) >> 8) | (($val & 0xff00) << 8) | (($val & 0xff) << 24); }');
 new BuiltinFunction("__builtin_bswap64", new CompiledType("int", rawValue: "uint64_t"), '(int $val) { return (($val & 0xff00000000000000) >> 56) | (($val & 0xff000000000000) >> 40) | (($val & 0xff0000000000) >> 24) | (($val & 0xff00000000) >> 8) | (($val & 0xff000000) << 8) | (($val & 0xff0000) << 24) | (($val & 0xff00) << 40) | (($val & 0xff) << 56); }');
 new BuiltinFunction("__builtin_object_size", new CompiledType("int", rawValue: "size_t"), '(FFI\CData $ptr, int $type) { return $type <= 1 ? -1 : 0; }'); // Defaults when "conditions not met"
+
+new BuiltinFunction("__builtin_huge_val", new CompiledType("float", rawValue: "double"), '() { return INF; }');
+new BuiltinFunction("__builtin_inf", new CompiledType("float", rawValue: "double"), '() { return INF; }');
+new BuiltinFunction("__builtin_inff", new CompiledType("float"), '() { return INF; }');
+new BuiltinFunction("__builtin_infl", new CompiledType("float", rawValue: "long double"), '() { return INF; }');
 
 // __builtin___*_chk functions
 new BuiltinFunction("__builtin___memcpy_chk", new CompiledType("void", [null]), '(FFI\CData $dest, FFI\CData $src, int $len, int $destlen) { return $this->ffi->memcpy($dest, $src, $len); }');
