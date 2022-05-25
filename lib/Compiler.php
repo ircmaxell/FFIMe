@@ -331,15 +331,15 @@ class Compiler {
         if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
             $this->knownCompiledFunctions[$def->name] = $def;
 
-            [$return, $functionType, $params, $returnType] = $this->compileFunctionStart($def);
-            foreach ($params as $idx => $param) {
-                $varname = $functionType->paramNames[$idx];
-                $this->localVariableTypes[$varname] = $param;
-            }
+            [$return, $functionType] = $this->compileFunctionStart($def);
+            $params = $functionType->args;
             $callParams = [];
             foreach ($params as $idx => $param) {
-                $callParams[] = '$' . ($functionType->paramNames[$idx] ?: "_$idx");
+                $varname = $functionType->argNames[$idx];
+                $this->localVariableTypes[$varname] = $param;
+                $callParams[] = '$' . ($varname ?: "_$idx");
             }
+            $returnType = $functionType->return;
             if ($returnType->value !== 'void') {
                 $return[] = '        $result = $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
                 if ($returnType->isNative) {
@@ -355,13 +355,13 @@ class Compiler {
             $nullableReturnType = $returnType->value === 'void' && $returnType->indirections() === 0 ? 'void' : ($returnType->isNative ? $returnType->value : '?FFI\CData');
             $paramSignature = [];
             foreach ($params as $idx => $param) {
-                $varname = $functionType->paramNames[$idx] ?: "_$idx";
+                $varname = $functionType->argNames[$idx] ?: "_$idx";
                 $paramSignature[] = ($param->isNative ? $param->value : 'FFI\CData') . ' $' . $varname;
             }
             $return[] = "    private function " . self::COMPILED_PREFIX . "{$def->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
             foreach ($params as $idx => $param) {
                 if ($param->isNative) {
-                    $varname = $functionType->paramNames[$idx] ?: "_$idx";
+                    $varname = $functionType->argNames[$idx] ?: "_$idx";
                     $return[] = '        $' . $varname . ' = (function ($cdata, $val) { $cdata->cdata = $val; return $cdata; })($this->ffi->new("' . $param->value . '"), $' . $varname . ');';
                 }
             }
@@ -610,12 +610,13 @@ class Compiler {
                 return [];
             }
 
-            [$return, $functionType, $params, $returnType] = $this->compileFunctionStart($declaration);
+            [$return, $functionType] = $this->compileFunctionStart($declaration);
 
             $callParams = [];
-            foreach ($params as $idx => $param) {
-                $callParams[] = '$' . ($functionType->paramNames[$idx] ?: "_$idx");
+            foreach ($functionType->args as $idx => $param) {
+                $callParams[] = '$' . ($functionType->argNames[$idx] ?: "_$idx");
             }
+            $returnType = $functionType->return;
             if ($returnType->value !== 'void') {
                 $return[] = '        $result = $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
                 if ($returnType->isNative) {
@@ -663,25 +664,26 @@ class Compiler {
         return $return;
     }
 
-    /** @return array{string[], Type, CompiledType[], CompiledType} */
+    /** @return array{string[], CompiledFunctionType} */
     public function compileFunctionStart(Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl $decl): array {
         $this->knownFunctions[$decl->name] = $decl;
         $functionType = $decl->type;
         while ($functionType instanceof Type\AttributedType) {
             $functionType = $functionType->parent;
         }
-        $returnType = $this->compileType($functionType->return);
-        $params = $this->compileParameters($functionType->params);
+        $functionType = $this->compileType($functionType);
+        /** @var CompiledFunctionType $functionType */
+        $returnType = $functionType->return;
         $nullableReturnType = ((($returnType->value === 'void' && $returnType->indirections() === 0) || $returnType->isNative ? '' : '?') . $this->toPHPType($returnType));
         $paramSignature = [];
-        foreach ($params as $idx => $param) {
-            $varname = $functionType->paramNames[$idx] ?: "_$idx";
+        foreach ($functionType->args as $idx => $param) {
+            $varname = $functionType->argNames[$idx] ?: "_$idx";
             $phpParam = $this->toPHPType($param);
             $paramSignature[] = ($phpParam !== 'void_ptr' ? ($param->indirections() > 0 ? "void_ptr | " : "") . $phpParam : "i{$this->className}_ptr") . ($param->isNative ? '' : ' | null') . ($phpParam === 'string_' ? ' | string' : '') . ($param->indirections() >= 1 ? ' | array' : '') . ' $' . $varname;
         }
         $return[] = "    public function {$decl->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
-        foreach ($params as $idx => $param) {
-            $varname = $functionType->paramNames[$idx] ?: "_$idx";
+        foreach ($functionType->args as $idx => $param) {
+            $varname = $functionType->argNames[$idx] ?: "_$idx";
             $hasIf = false;
             if ($this->toPHPType($param) === 'string_') {
                 $return[] = '        if (\is_string($' . $varname . ')) {';
@@ -707,7 +709,7 @@ class Compiler {
                 $return[] = '        }';
             }
         }
-        return [$return, $functionType, $params, $returnType];
+        return [$return, $functionType];
     }
 
     protected function formatString(string $string): string {
@@ -1025,22 +1027,6 @@ class Compiler {
         var_dump($expr);
     }
 
-    /** @param Type[] $params
-     *  @return CompiledType[]
-     */
-    public function compileParameters(array $params): array {
-        if (empty($params)) {
-            return [];
-        } elseif ($params[0] instanceof Type\BuiltinType && $params[0]->name === 'void') {
-            return [];
-        }
-        $return = [];
-        foreach ($params as $param) {
-            $return[] =  $this->compileType($param);
-        }
-        return $return;
-    }
-
     private const INT_TYPES = [
         '_Bool',
         'int8_t',
@@ -1103,6 +1089,9 @@ class Compiler {
     public function compileType(Type $type): CompiledType {
         if ($type instanceof Type\PointerType || $type instanceof Type\ArrayType) {
             $compiled = $this->compileType($type->parent);
+            if ($compiled instanceof CompiledFunctionType) {
+                $this->generateFunctionPtrDefs = true;
+            }
             $typeIndex = null;
             if ($type instanceof Type\ArrayType\ConstantArrayType) {
                 $typeIndex = $this->compileConstantExpr($type->size);
@@ -1173,8 +1162,7 @@ class Compiler {
         } elseif ($type instanceof Type\ParenType) {
             return $this->compileType($type->parent);
         } elseif ($type instanceof Type\FunctionType\FunctionProtoType) {
-            $this->generateFunctionPtrDefs = true;
-            return new CompiledFunctionType($this->compileType($type->return), array_map([$this, 'compileType'], $type->params), $type->isVariadic);
+            return new CompiledFunctionType($this->compileType($type->return), array_map([$this, 'compileType'], $type->params), $type->paramNames, $type->isVariadic);
         }
         var_dump($type);
         throw new \LogicException('Not implemented how to handle type yet: ' . get_class($type));
@@ -1214,7 +1202,7 @@ class Compiler {
             $phpType = $this->toPHPType($baseType);
             $baseIndirections = $baseType->indirections() + ($this->baseTypeIndirections[$baseType->value] ?? 0);
             $this->baseTypeIndirections[$decl->name] = $baseIndirections;
-            for ($i = $baseIndirections === 0 && $phpType === 'void' ? 1 : 0; $i <= 4 - $baseIndirections; $i++) {
+            for ($i = $baseIndirections === 0 && ($phpType === 'void' || $baseType instanceof CompiledFunctionType) ? 1 : 0; $i <= 4 - $baseIndirections; $i++) {
                 $returns[] = '\class_alias(__NAMESPACE__ . "\\\\' . ($phpType === 'string_' && $i > 0 ? 'string' : $phpType) . str_repeat('_ptr', $i) . '", __NAMESPACE__ . "\\\\' . $decl->name . str_repeat('_ptr', $i + ($baseType->isNative ? 1 : 0)) . '");';
             }
         }
