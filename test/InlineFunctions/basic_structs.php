@@ -14,9 +14,13 @@ struct bar {
 
 struct foo {
     int value[2];
-    int second_value;
-    const char *str;
-    struct bar bar;
+    struct {
+        int second_value;
+    } u;
+    struct {
+        const char *str;
+        struct bar bar;
+    };
 };
 
 typedef struct bar bar_t;
@@ -43,7 +47,7 @@ HEADER);
 
         $this->assertSame(0, $foo->value[0]);
         $this->assertSame(1, $foo->value[1]);
-        $this->assertSame(2, $foo->second_value);
+        $this->assertSame(2, $foo->u->second_value);
         $this->assertSame("some str", $foo->str->toString());
         $this->assertSame(3, $foo->bar->val);
         $this->assertSame(3, $testCase->global_bar->val);

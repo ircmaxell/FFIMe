@@ -53,7 +53,7 @@ class Compiler {
         }
         $this->defines = $defines;
         $this->buildResolver($decls);
-        [$this->records, $this->recordBitfieldSizes] = $this->buildRecordFieldTypeMap($decls);
+        $this->buildRecordFieldTypeMap($decls);
         foreach ($nonCompiledDeclarations as $decl) {
             $this->collectNonCompiledDeclaration($decl);
         }
@@ -1156,7 +1156,7 @@ class Compiler {
                 return new CompiledType(($type->decl->kind === Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl::KIND_UNION ? 'union' : 'struct') . ' ' . $type->decl->name);
             } else {
                 $anonTypename = ($type->decl->kind === Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl::KIND_UNION ? 'union' : 'struct') . ' anonymous id ' . count($this->records);
-                $this->recurseAnonymousFieldTypes($anonTypename, $type->decl, $this->records, $this->recordBitfieldSizes);
+                $this->recurseAnonymousFieldTypes($anonTypename, $type->decl);
                 return new CompiledType($anonTypename);
             }
         } elseif ($type instanceof Type\ParenType) {
@@ -1433,40 +1433,34 @@ class Compiler {
         }
     }
 
-    /** @param CompiledType[][] $records */
-    private function recurseAnonymousFieldTypes(string $recordName, Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl $decl, array &$records, array &$bitfieldSizes): void {
-        $records[$recordName] ??= [];
+    private function recurseAnonymousFieldTypes(string $recordName, Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl $decl): void {
+        $this->records[$recordName] ??= [];
         foreach ($decl->fields ?? [] as $field) {
             if ($field->type) {
-                if ($field->type instanceof Type\TagType\RecordType && $field->type->decl->name === null) {
-                    $this->recurseAnonymousFieldTypes($recordName, $field->type->decl, $records, $bitfieldSizes);
-                } elseif ($field->name != "") {
-                    $records[$recordName][$field->name] = $this->compileType($field->type);
+                if ($field->name != "") {
+                    $this->records[$recordName][$field->name] = $this->compileType($field->type);
                     if ($field->bitfieldSize) {
-                        $bitfieldSizes[$recordName][$field->name] = $this->compileConstantExpr($field->bitfieldSize);
+                        $this->recordBitfieldSizes[$recordName][$field->name] = $this->compileConstantExpr($field->bitfieldSize);
                     }
+                } elseif ($field->type instanceof Type\TagType\RecordType && $field->type->decl->name === null) {
+                    $this->recurseAnonymousFieldTypes($recordName, $field->type->decl);
                 }
             }
         }
     }
 
-    /** @param Decl[] $decls
-     *  @return array{CompiledType[][], int[][]}
-     */
-    protected function buildRecordFieldTypeMap(array $decls): array {
-        $records = [];
-        $bitfieldSizes = [];
+    /** @param Decl[] $decls */
+    protected function buildRecordFieldTypeMap(array $decls): void {
         foreach ($decls as $decl) {
             if ($decl instanceof Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl) {
-                $this->recurseAnonymousFieldTypes(($decl->kind === Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl::KIND_UNION ? 'union' : 'struct') . ' ' . $decl->name, $decl, $records, $bitfieldSizes);
+                $this->recurseAnonymousFieldTypes(($decl->kind === Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl::KIND_UNION ? 'union' : 'struct') . ' ' . $decl->name, $decl);
             }
             if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
                 if ($decl->type instanceof Type\TagType\RecordType) {
                     $name = isset($decl->type->decl->name) ? ($decl->type->decl->kind === Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl::KIND_UNION ? 'union' : 'struct') . ' ' . $decl->type->decl->name : $decl->name;
-                    $this->recurseAnonymousFieldTypes($name, $decl->type->decl, $records, $bitfieldSizes);
+                    $this->recurseAnonymousFieldTypes($name, $decl->type->decl);
                 }
             }
         }
-        return [$records, $bitfieldSizes];
     }
 }
