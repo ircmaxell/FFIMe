@@ -31,13 +31,23 @@ class Compiler {
     private array $recordBitfieldSizes = [];
     /** @var Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl[] */
     private array $knownFunctions = [];
-    /** @var Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl[] */
+    /** @var CompiledFunctionType[] */
     private array $knownCompiledFunctions = [];
     /** @var string[] */
     private array $usedBuiltinTypes = [];
     private array $usedBuiltinFunctions = [];
     /** @var int[] */
     private array $baseTypeIndirections = []; // when compiling aliases, there shall be no more than 4 levels
+    private int $switchIndex = 0;
+    private int $activeSwitchIndex = 0;
+    /** @var Stmt\Label\CaseLabel[] */
+    private array $switchCases = [];
+    /** @var string[]|null */
+    private ?array $innerGotoLabels = null;
+    /** @var string[]|null */
+    private ?array $pendingGotoLabels = null;
+    private bool $usedBreak = false;
+    private string $activeBreakTarget = "";
     private bool $generateFunctionPtrDefs = false;
 
     /** @var string[] */
@@ -329,9 +339,9 @@ class Compiler {
 
         $return = [];
         if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
-            $this->knownCompiledFunctions[$def->name] = $def;
-
             [$return, $functionType] = $this->compileFunctionStart($def);
+            $this->knownCompiledFunctions[$def->name] = $functionType;
+
             $params = $functionType->args;
             $callParams = [];
             foreach ($params as $idx => $param) {
@@ -365,7 +375,11 @@ class Compiler {
                     $return[] = '        $' . $varname . ' = (function ($cdata, $val) { $cdata->cdata = $val; return $cdata; })($this->ffi->new("' . $param->value . '"), $' . $varname . ');';
                 }
             }
-            $return = array_merge($return, $this->compileStmt($def->stmts));
+            $stmts = $this->compileStmt($def->stmts);
+            if ($this->innerGotoLabels !== null) {
+                $return[] = '        $' . self::COMPILED_PREFIX . '_goto_label = null;';
+            }
+            array_push($return, ...$stmts);
             $return[] = "    }";
         } elseif ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
             $this->globalVariableTypes[$def->name] = $this->compileType($def->type);
@@ -383,8 +397,29 @@ class Compiler {
                 array_push($result, ...$this->compileStmt($stmt, $level));
             }
         } else {
+            foreach ($stmt->labels as $label) {
+                if ($label instanceof Stmt\Label\CaseLabel) {
+                    $labelname = '_ffi_switch_' . $this->activeSwitchIndex . '_case_' . \count($this->switchCases);
+                    $this->switchCases[] = $label;
+                } elseif ($label instanceof Stmt\Label\DefaultLabel) {
+                    $labelname = '_ffi_switch_' . $this->activeSwitchIndex . '_case_' . \count($this->switchCases);
+                    $this->switchCases[] = null;
+                } elseif ($label instanceof Stmt\Label\IdentifiedLabel) {
+                    $labelname = $label->label;
+                } else {
+                    var_dump($label);
+                    continue;
+                }
+                if (isset($this->pendingGotoLabels[$labelname])) {
+                    unset($this->pendingGotoLabels[$labelname]);
+                    $result[] = $labelname . ':';
+                } else {
+                    $this->innerGotoLabels[$labelname] = $level;
+                    $result[] = self::COMPILED_PREFIX . '_' . $level . '_' . $labelname . ': $' . self::COMPILED_PREFIX . '_goto_label = null;';
+                }
+            }
             if ($stmt instanceof Stmt\ReturnStmt) {
-                $result[] = str_repeat(' ', $level * 4) . 'return' . ($stmt->result ? ' ' . $this->compileExpr($stmt->result)->value : '') . ';';
+                $result[] = str_repeat(' ', $level * 4) . 'return' . ($stmt->result ? ' ' . $this->compileExpr($stmt->result)->toValue(\end($this->knownCompiledFunctions)->return) : '') . ';';
             } elseif ($stmt instanceof Expr) {
                 $result[] = str_repeat(' ', $level * 4) . $this->compileExpr($stmt)->value . ';';
             } elseif ($stmt instanceof Stmt\DeclStmt) {
@@ -399,25 +434,126 @@ class Compiler {
                     array_push($result, ...$this->compileStmt($stmt->falseStmt, $level + 1));
                 }
                 $result[] = str_repeat(' ', $level * 4) . '}';
-            } elseif ($stmt instanceof Stmt\LoopStmt) {
-                if ($stmt->condition && !$stmt->initStmt && !$stmt->loopExpr) {
-                    $loop = 'while (' . $this->compileExpr($stmt->condition)->toBool() . ')';
-                } else {
-                    $loop = 'for (';
-                    if ($stmt->initStmt) {
-                        if ($stmt->initStmt instanceof Stmt\DeclStmt) {
-                            if ($decls = $this->compileDeclStmt($stmt->initStmt)) {
-                                $loop .= implode(', ', $decls);
+            } elseif ($stmt instanceof Stmt\LoopStmt || $stmt instanceof Stmt\DoLoopStmt) {
+                $pendingGotoLabels = $this->pendingGotoLabels;
+                $innerGotoLabels = $this->innerGotoLabels;
+                $this->innerGotoLabels = [];
+
+                $initStmt = [];
+                if ($stmt instanceof Stmt\LoopStmt) {
+                    if ($stmt->initStmt instanceof Stmt\DeclStmt) {
+                        if ($decls = $this->compileDeclStmt($stmt->initStmt)) {
+                            foreach ($decls as $decl) {
+                                $initStmt[] = str_repeat(' ', $level * 4) . $decl . ';';
                             }
-                        } elseif ($stmt->initStmt instanceof Expr) {
-                            $loop .= $this->compileExpr($stmt->initStmt)->value;
                         }
+                    } elseif ($stmt->initStmt instanceof Expr) {
+                        $initStmt[] = str_repeat(' ', $level * 4) . $this->compileExpr($stmt->initStmt)->value . ';';
                     }
-                    $loop .= ';' . ($stmt->condition ? ' ' . $this->compileExpr($stmt->condition)->toBool() : '') . ';' . ($stmt->loopExpr ? ' ' . $this->compileExpr($stmt->loopExpr)->value : '') . ')';
+                }
+
+                $prevUsedBreak = $this->usedBreak;
+                $prevBreakTarget = $this->activeBreakTarget;
+                $this->activeBreakTarget = 'break;';
+                $stmts = $this->compileStmt($stmt->loopStmt, $level + 1);
+                $this->activeBreakTarget = $prevBreakTarget;
+                $this->usedBreak = $prevUsedBreak;
+
+                $condition = "";
+                if ($stmt->condition) {
+                    $condition = $this->compileExpr($stmt->condition)->toBool();
+                }
+                if ($stmt instanceof Stmt\DoLoopStmt) {
+                    $loop = "do";
+                    $loopEnd = " while ($condition);";
+                } else {
+                    $loopEnd = "";
+                    if ($stmt->condition && $this->innerGotoLabels) {
+                        $condition = '$' . self::COMPILED_PREFIX . "_goto_label || ($condition)";
+                    }
+                    if ($stmt->condition && !$stmt->initStmt && !$stmt->loopExpr) {
+                        $loop = "while ($condition)";
+                    } else {
+                        array_push($result, ...$initStmt);
+                        $loop = "for (; $condition;" . ($stmt->loopExpr ? ' ' . $this->compileExpr($stmt->loopExpr)->value : '') . ')';
+                    }
+                }
+                foreach ($this->innerGotoLabels as $label => $gotoLevel) {
+                    if (isset($pendingGotoLabels[$label])) {
+                        $labelname = $label;
+                    } else {
+                        $labelname = self::COMPILED_PREFIX . '_' . $level . '_' . $label;
+                    }
+                    $result[] = 'if (false) { ' . $labelname . ': $' . self::COMPILED_PREFIX . '_goto_label = "' . $label . '"; }';
                 }
                 $result[] = str_repeat(' ', $level * 4) . $loop . ' {';
-                array_push($result, ...$this->compileStmt($stmt->loopStmt, $level + 1));
+
+                if ($this->innerGotoLabels) {
+                    $result[] = 'if ($' . self::COMPILED_PREFIX . '_goto_label !== null) { switch ($' . self::COMPILED_PREFIX . '_goto_label) {';
+                    foreach ($this->innerGotoLabels as $label => $gotoLevel) {
+                        $result[] = ' case "' . $label . '": goto ' . self::COMPILED_PREFIX . '_' . $gotoLevel . '_' . $label . ';';
+                        if (isset($pendingGotoLabels[$label])) {
+                            unset($this->pendingGotoLabels[$label], $this->innerGotoLabels[$label]);
+                        } else {
+                            $this->innerGotoLabels[$label] = $level;
+                        }
+                    }
+                    $result[] = '} }';
+                }
+                array_push($result, ...$stmts);
+                $result[] = str_repeat(' ', $level * 4) . '}' . $loopEnd;
+
+                if ($innerGotoLabels) {
+                    $this->innerGotoLabels += $innerGotoLabels;
+                }
+            } elseif ($stmt instanceof Stmt\ContinueStmt) {
+                // Unlike in PHP, continue applies directly to loops. Given that we deconstruct switches to goto, this is trivial
+                $result[] = str_repeat(' ', $level * 4) . 'continue;';
+            } elseif ($stmt instanceof Stmt\BreakStmt) {
+                // We have to handle the deconstructed switches here as well
+                $result[] = str_repeat(' ', $level * 4) . $this->activeBreakTarget;
+                $this->usedBreak = true;
+            } elseif ($stmt instanceof Stmt\EmptyStmt) {
+            } elseif ($stmt instanceof Stmt\GotoStmt) {
+                $label = $stmt->label;
+                if (isset($this->innerGotoLabels[$label])) {
+                    // resolve backwards gotos
+                    $label = self::COMPILED_PREFIX . '_' . $this->innerGotoLabels[$label] . '_' . $label;
+                    unset($this->innerGotoLabels[$label]);
+                } else {
+                    $this->pendingGotoLabels[$label] = true;
+                }
+                $result[] = str_repeat(' ', $level * 4) . 'goto ' . $label . ';';
+            } elseif ($stmt instanceof Stmt\SwitchStmt) {
+                // C cases can be attached to any arbitrary statement within a switch. PHP cases cannot. Compile the switch cases to a goto instead.
+                $prevSwitchIndex = $this->activeSwitchIndex;
+                $this->activeSwitchIndex = ++$this->switchIndex;
+                $prevSwitchCases = $this->switchCases;
+                $prevUsedBreak = $this->usedBreak;
+                $prevBreakTarget = $this->activeBreakTarget;
+
+                $this->activeBreakTarget = 'goto _ffi_switch_' . $this->activeSwitchIndex . '_end;';
+                $this->usedBreak = false;
+                $result[] = str_repeat(' ', $level * 4) . 'switch (' . $this->compileExpr($stmt->condition)->toBool() . ') {';
+                $compiledStmts = $this->compileStmt($stmt->stmt, $level + 1);
+                foreach ($this->switchCases as $caseIndex => $case) {
+                    $label = '_ffi_switch_' . $this->activeSwitchIndex . '_case_' . $caseIndex;
+                    $result[] = str_repeat(' ', $level * 4 + 4) . ($case ? 'case ' . $this->compileExpr($case->expr)->toValue() : 'default') . ': goto ' . self::COMPILED_PREFIX . '_' . $this->innerGotoLabels[$label] . '_' . $label . ';';
+                    unset($this->innerGotoLabels[$label]); // this is always a goto into the just compiled switch, hence can just remove it here
+                }
                 $result[] = str_repeat(' ', $level * 4) . '}';
+                $result[] = str_repeat(' ', $level * 4) . '{';
+                array_push($result, ...$compiledStmts);
+                $result[] = str_repeat(' ', $level * 4) . '}';
+
+                if ($this->usedBreak) {
+                    $result[] = str_repeat(' ', $level * 4) . '_ffi_switch_' . $this->activeSwitchIndex . '_end: ;';
+                }
+
+                $this->activeBreakTarget = $prevBreakTarget;
+                $this->usedBreak = $prevUsedBreak;
+                $this->switchCases = $prevSwitchCases;
+                $this->activeSwitchIndex = $prevSwitchIndex;
             } elseif ($stmt instanceof Stmt\AsmStmt) {
                 $result[] = str_repeat(' ', $level * 4) . 'throw new \LogicException("Unsupported assembly statement");';
             } else {
@@ -728,7 +864,7 @@ class Compiler {
 
     public function compileConstantExpr(Expr $expr) {
         if ($expr instanceof Expr\IntegerLiteral) {
-            return (int) str_replace(['u', 'U', 'l', 'L'], '', $expr->value);
+            return intval(str_replace(['u', 'U', 'l', 'L'], '', $expr->value), 0);
         }
         if ($expr instanceof Expr\UnaryOperator && null !== $op = $this->compileConstantExpr($expr->expr)) {
             switch ($expr->kind) {
@@ -811,7 +947,7 @@ class Compiler {
         if ($expr instanceof Expr\IntegerLiteral) {
             // parse out type qualifiers
             $value = str_replace(['u', 'U', 'l', 'L'], '', $expr->value);
-            return new CompiledExpr((string) (int) $value);
+            return new CompiledExpr((string) intval($value, 0));
         }
         if ($expr instanceof Expr\FloatLiteral) {
             // parse out type qualifiers
@@ -835,13 +971,13 @@ class Compiler {
                 case Expr\UnaryOperator::KIND_LOGICAL_NOT:
                     return new CompiledExpr('(!' . $op->toValue() . ')');
                 case Expr\UnaryOperator::KIND_POSTDEC:
-                    return $op->withCurrent('(' . $op->toValue() . '--)');
+                    return $op->withCurrent('(' . $op->toValue(charConvert: false) . '--)');
                 case Expr\UnaryOperator::KIND_POSTINC:
-                    return $op->withCurrent('(' . $op->toValue() . '++)');
+                    return $op->withCurrent('(' . $op->toValue(charConvert: false) . '++)');
                 case Expr\UnaryOperator::KIND_PREDEC:
-                    return $op->withCurrent('(--' . $op->toValue() . ')');
+                    return $op->withCurrent('(--' . $op->toValue(charConvert: false) . ')');
                 case Expr\UnaryOperator::KIND_PREINC:
-                    return $op->withCurrent('(++' . $op->toValue() . ')');
+                    return $op->withCurrent('(++' . $op->toValue(charConvert: false) . ')');
                 case Expr\UnaryOperator::KIND_ADDRESS_OF:
                     if ($op->type instanceof CompiledFunctionType && $op->type->indirections() === 0) {
                         return $op->withCurrent($op->value, 1);
@@ -853,7 +989,7 @@ class Compiler {
                     if ($isAssign && (($expr->expr instanceof Expr\UnaryOperator && in_array($expr->expr->kind, [Expr\UnaryOperator::KIND_PREINC, Expr\UnaryOperator::KIND_POSTINC, Expr\UnaryOperator::KIND_PREDEC, Expr\UnaryOperator::KIND_POSTDEC])) || $expr->expr instanceof Expr\BinaryOperator)) {
                         $value = "(fn() => $value)()";
                     }
-                    return $op->withCurrent($isAssign || $op->type->rawValue !== 'char' ? $value . '[0]' : '\ord(' . $value . '[0])', -1);
+                    return $op->withCurrent($value . '[0]', -1);
                 case Expr\UnaryOperator::KIND_ALIGNOF:
                     return new CompiledExpr('FFI::alignof(' . ($op->cdata ? $op->value : '$this->ffi->type("' . $op->value . '")') . ')');
                 case Expr\UnaryOperator::KIND_SIZEOF:
@@ -870,6 +1006,7 @@ class Compiler {
             $right = $this->compileExpr($expr->right);
             $opChar = [
                     Expr\BinaryOperator::KIND_ADD => '+',
+                    Expr\BinaryOperator::KIND_SUB => '-',
                     Expr\BinaryOperator::KIND_MUL => '*',
                     Expr\BinaryOperator::KIND_DIV => '/',
                     Expr\BinaryOperator::KIND_REM => '%',
@@ -921,7 +1058,7 @@ class Compiler {
                     return $right->withCurrent($left->value . ', ' . $right->value);
             }
             if ($expr->kind & Expr\BinaryOperator::KIND_ASSIGN) {
-                return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue() : 'FFI::addr(' . $left->value . ')[0]') . ' ' . $opChar . '= ' . $right->toValue($left->type) . ')');
+                return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue(charConvert: false) : ($opChar ? $left->value : 'FFI::addr(' . $left->value . ')[0]')) . ' ' . $opChar . '= ' . $right->toValue($left->type) . ')');
             }
         }
         if ($expr instanceof Expr\CallExpr) {

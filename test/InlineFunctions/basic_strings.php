@@ -2,8 +2,6 @@
 
 namespace FFIMe\Test\InlineFunctions;
 
-use FFIMe\Test\InlineFunctions\generated\BasicStrings\void_ptr;
-
 class BasicStrings extends InlineTestcase {
     public function testBasicStringManipulation() {
         $this->compile(<<<HEADER

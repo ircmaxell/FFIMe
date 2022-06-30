@@ -14,18 +14,28 @@ class CompiledExpr
         $this->cdata = $cdata;
     }
 
-    public function toValue(?CompiledType $type = null): string {
+    public function toValue(?CompiledType $type = null, $charConvert = true): string {
         $val = $this->value;
         if ($type && $this->type != $type) {
             if ($this->type->indirections) {
                 $val = '$this->ffi->cast("' . $type->toValue() . '", ' . $val . ')';
-            } elseif (($this->type->rawValue === 'char') !== ($type->rawValue === 'char')) {
-                $val = '\chr(' . $val . ')';
+            } elseif (!$type->indirections && ($this->type->rawValue === 'char') !== ($type->rawValue === 'char')) {
+                if ($type->rawValue === 'char') {
+                    $val = '\chr(' . $val . ')';
+                } else {
+                    $val = '\ord(' . $val . ')';
+                }
             }
+            return $this->cdata && $type->isNative ? '(' . $val . ')->cdata' : $val;
         } else {
-            $type = $this->type;
+            if ($this->cdata && $this->type->isNative) {
+                $val = '(' . $val . ')->cdata';
+            }
+            if ($charConvert && !$this->type->indirections && $this->type->rawValue === 'char') {
+                $val = '\ord(' . $val . ')';
+            }
+            return $val;
         }
-        return $this->cdata && $type->isNative ? '(' . $val . ')->cdata' : $val;
     }
 
     public function toBool(): string {
