@@ -339,7 +339,7 @@ class Compiler {
 
         $return = [];
         if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
-            [$return, $functionType] = $this->compileFunctionStart($def);
+            [$return, $functionType, $preReturnStmts] = $this->compileFunctionStart($def);
             $this->knownCompiledFunctions[$def->name] = $functionType;
 
             $params = $functionType->args;
@@ -352,6 +352,7 @@ class Compiler {
             $returnType = $functionType->return;
             if ($returnType->value !== 'void') {
                 $return[] = '        $result = $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
+                array_push($return, ...$preReturnStmts);
                 if ($returnType->isNative) {
                     $return[] = '        return $result;';
                 } else {
@@ -359,6 +360,7 @@ class Compiler {
                 }
             } else {
                 $return[] = '        $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
+                array_push($return, ...$preReturnStmts);
             }
             $return[] = "    }";
 
@@ -746,7 +748,7 @@ class Compiler {
                 return [];
             }
 
-            [$return, $functionType] = $this->compileFunctionStart($declaration);
+            [$return, $functionType, $preReturnStmts] = $this->compileFunctionStart($declaration);
 
             $callParams = [];
             foreach ($functionType->args as $idx => $param) {
@@ -755,6 +757,7 @@ class Compiler {
             $returnType = $functionType->return;
             if ($returnType->value !== 'void') {
                 $return[] = '        $result = $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
+                array_push($return, ...$preReturnStmts);
                 if ($returnType->isNative) {
                     $return[] = '        return ' . ($returnType->rawValue === 'char' ? '\ord($result)' : '$result') . ';';
                 } else {
@@ -762,6 +765,7 @@ class Compiler {
                 }
             } else {
                 $return[] = '        $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
+                array_push($return, ...$preReturnStmts);
             }
             $return[] = "    }";
         } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TagDecl\EnumDecl) {
@@ -800,9 +804,10 @@ class Compiler {
         return $return;
     }
 
-    /** @return array{string[], CompiledFunctionType} */
+    /** @return array{string[], CompiledFunctionType, string[]} */
     public function compileFunctionStart(Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl $decl): array {
         $this->knownFunctions[$decl->name] = $decl;
+        $preReturnStmts = [];
         $functionType = $decl->type;
         while ($functionType instanceof Type\AttributedType) {
             $functionType = $functionType->parent;
@@ -821,6 +826,9 @@ class Compiler {
         foreach ($functionType->args as $idx => $param) {
             $varname = $functionType->argNames[$idx] ?: "_$idx";
             $hasIf = false;
+            if ($param->indirections() >= 1) {
+                $return[] = '        $__ffi_internal_refs' . $varname . ' = [];';
+            }
             if ($this->toPHPType($param) === 'string_') {
                 $return[] = '        if (\is_string($' . $varname . ')) {';
                 $return[] = '            $' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
@@ -829,10 +837,18 @@ class Compiler {
             if ($param->indirections() >= 1) {
                 $return[] = '        ' . ($hasIf ? '} else' : '') . 'if (\is_array($' . $varname . ')) {';
                 $return[] = '            $_ = $this->ffi->new("' . $param->rawValue . str_repeat("*", $param->indirections() - 1) . '[" . \count($' . $varname . ') . "]");';
-                $return[] = '            foreach (\array_values($' . $varname . ') as $_k => $_v) {';
-                $return[] = '                $_[$_k] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? '' : '->getData()') . ';';
+                $return[] = '            $_i = 0;';
+                $return[] = '            foreach ($' . $varname . ' as $_k => $_v) {';
+                $return[] = '                if ($_ref = \ReflectionReference::fromArrayElement($' . $varname . ', $_k)) {';
+                $return[] = '                    $__ffi_internal_refs' . $varname . '[$_i] = &$' . $varname . '[$_k];';
+                $return[] = '                }';
+                $return[] = '                $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '->getData()') . ';';
                 $return[] = '            }';
-                $return[] = '            $' . $varname . ' = $_;';
+                $return[] = '            $__ffi_internal_original' . $varname . ' = $' . $varname . ' = $_;';
+
+                $preReturnStmts[] = '        foreach ($__ffi_internal_refs' . $varname . ' as $_k => &$__ffi_internal_ref_v) {';
+                $preReturnStmts[] = '            $__ffi_internal_ref_v = $__ffi_internal_original' . $varname . '[$_k];';
+                $preReturnStmts[] = '        }';
                 $hasIf = true;
             }
             if (!$param->isNative) {
@@ -845,7 +861,7 @@ class Compiler {
                 $return[] = '        }';
             }
         }
-        return [$return, $functionType];
+        return [$return, $functionType, $preReturnStmts];
     }
 
     protected function formatString(string $string): string {

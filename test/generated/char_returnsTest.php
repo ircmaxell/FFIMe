@@ -78,25 +78,41 @@ char *LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
         return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();
     }
     public function LLVMGetModuleIdentifier(void_ptr | struct_LLVMOpaqueModule_ptr | null | array $M, void_ptr | size_t_ptr | null | array $Len): ?string_ {
+        $__ffi_internal_refsM = [];
         if (\\is_array($M)) {
             $_ = $this->ffi->new("struct LLVMOpaqueModule[" . \\count($M) . "]");
-            foreach (\\array_values($M) as $_k => $_v) {
-                $_[$_k] = $_v->getData();
+            $_i = 0;
+            foreach ($M as $_k => $_v) {
+                if ($_ref = \\ReflectionReference::fromArrayElement($M, $_k)) {
+                    $__ffi_internal_refsM[$_i] = &$M[$_k];
+                }
+                $_[$_i++] = $_v->getData();
             }
-            $M = $_;
+            $__ffi_internal_originalM = $M = $_;
         } else {
             $M = $M->getData();
         }
+        $__ffi_internal_refsLen = [];
         if (\\is_array($Len)) {
             $_ = $this->ffi->new("size_t[" . \\count($Len) . "]");
-            foreach (\\array_values($Len) as $_k => $_v) {
-                $_[$_k] = $_v;
+            $_i = 0;
+            foreach ($Len as $_k => $_v) {
+                if ($_ref = \\ReflectionReference::fromArrayElement($Len, $_k)) {
+                    $__ffi_internal_refsLen[$_i] = &$Len[$_k];
+                }
+                $_[$_i++] = $_v ?? 0;
             }
-            $Len = $_;
+            $__ffi_internal_originalLen = $Len = $_;
         } else {
             $Len = $Len->getData();
         }
         $result = $this->ffi->LLVMGetModuleIdentifier($M, $Len);
+        foreach ($__ffi_internal_refsM as $_k => &$__ffi_internal_ref_v) {
+            $__ffi_internal_ref_v = $__ffi_internal_originalM[$_k];
+        }
+        foreach ($__ffi_internal_refsLen as $_k => &$__ffi_internal_ref_v) {
+            $__ffi_internal_ref_v = $__ffi_internal_originalLen[$_k];
+        }
         return $result === null ? null : new string_($result);
     }
 }
@@ -335,7 +351,7 @@ class size_t_ptr_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {
     }
 
     public function tearDown(): void {
-        @unlink(__DIR__ . '/char_returnsTest.result.php');
+        //@unlink(__DIR__ . '/char_returnsTest.result.php');
     }
 
     /**

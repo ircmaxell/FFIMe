@@ -325,7 +325,7 @@ class int_ptr_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {
     }
 
     public function tearDown(): void {
-        @unlink(__DIR__ . '/basic_enumsTest.result.php');
+        //@unlink(__DIR__ . '/basic_enumsTest.result.php');
     }
 
     /**

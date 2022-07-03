@@ -399,7 +399,7 @@ class unsigned_long_int_ptr_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAcce
     }
 
     public function tearDown(): void {
-        @unlink(__DIR__ . '/basic_typedefsTest.result.php');
+        //@unlink(__DIR__ . '/basic_typedefsTest.result.php');
     }
 
     /**

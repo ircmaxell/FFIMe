@@ -77,18 +77,26 @@ char *getFoo();
         return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();
     }
     public function setFoo(void_ptr | string_ | null | string | array $value): void {
+        $__ffi_internal_refsvalue = [];
         if (\is_string($value)) {
             $value = string_::ownedZero($value)->getData();
         } elseif (\is_array($value)) {
             $_ = $this->ffi->new("char[" . \count($value) . "]");
-            foreach (\array_values($value) as $_k => $_v) {
-                $_[$_k] = $_v;
+            $_i = 0;
+            foreach ($value as $_k => $_v) {
+                if ($_ref = \ReflectionReference::fromArrayElement($value, $_k)) {
+                    $__ffi_internal_refsvalue[$_i] = &$value[$_k];
+                }
+                $_[$_i++] = $_v ?? 0;
             }
-            $value = $_;
+            $__ffi_internal_originalvalue = $value = $_;
         } else {
             $value = $value->getData();
         }
         $this->ffi->setFoo($value);
+        foreach ($__ffi_internal_refsvalue as $_k => &$__ffi_internal_ref_v) {
+            $__ffi_internal_ref_v = $__ffi_internal_originalvalue[$_k];
+        }
     }
     public function getFoo(): ?string_ {
         $result = $this->ffi->getFoo();
