@@ -82,10 +82,13 @@ class Compiler {
         $class[] = "interface i{$className} {}";
         $class[] = "interface i{$className}_ptr {}";
         $classStartIndex = \count($class);
+        [$typeDecls, $nonTypeDecls] = $this->splitDeclsIfType($decls);
         $class[] = "class $className {";
         $class[] = "    const SOFILE = " . var_export($soFile, true) . ';';
-        $class[] = "    const HEADER_DEF = " . var_export($this->compileDeclsToCode($decls), true) . ';';
+        $class[] = "    const TYPES_DEF = " . var_export($this->compileDeclsToCode($typeDecls), true) . ';';
+        $class[] = "    const HEADER_DEF = self::TYPES_DEF . " . var_export($this->compileDeclsToCode($nonTypeDecls), true) . ';';
         $class[] = "    private FFI \$ffi;";
+        $class[] = "    private static FFI \$staticFFI;";
         $class[] = "    private array \$__literalStrings = [];";
         foreach ($defines as $define => $value) {
             // remove type qualifiers
@@ -139,7 +142,9 @@ class Compiler {
         foreach ($this->usedBuiltinFunctions as $function => $_) {
             array_push($class, ...BuiltinFunction::$registry[$function]->print());
         }
-        $class[] = "}\n";
+        $class[] = "}";
+        $class[] = "(function() { self::\$staticFFI = \FFI::cdef($className::TYPES_DEF); })->bindTo(null, $className::class)();";
+        $class[] = "";
 
         $publicProperties = ["/**"];
         foreach ($this->globalVariableTypes as $var => $type) {
@@ -281,30 +286,30 @@ class Compiler {
 
     protected function compileMethods(): string {
         return '
-    public function cast(i'. $this->className . ' $from, string $to): i' . $this->className . ' {
+    public static function cast(i'. $this->className . ' $from, string $to): i' . $this->className . ' {
         if (!is_a($to, i' . $this->className . '::class)) {
             throw new \LogicException("Cannot cast to a non-wrapper type");
         }
-        return new $to($this->ffi->cast($to::getType(), $from->getData()));
+        return new $to(self::$staticFFI->cast($to::getType(), $from->getData()));
     }
 
-    public function makeArray(string $class, array $elements) {
+    public static function makeArray(string $class, array $elements): i'. $this->className . ' {
         $type = $class::getType();
         if (substr($type, -1) !== "*") {
             throw new \LogicException("Attempting to make a non-pointer element into an array");
         }
-        $cdata = $this->ffi->new(substr($type, 0, -1) . "[" . count($elements) . "]");
+        $cdata = self::$staticFFI->new(substr($type, 0, -1) . "[" . count($elements) . "]");
         foreach ($elements as $key => $raw) {
             $cdata[$key] = $raw === null ? null : $raw->getData();
         }
         return new $class($cdata);
     }
 
-    public function sizeof($classOrObject): int {
+    public static function sizeof($classOrObject): int {
         if (is_object($classOrObject) && $classOrObject instanceof i' . $this->className . ') {
-            return $this->ffi->sizeof($classOrObject->getData());
+            return self::$staticFFI->sizeof($classOrObject->getData());
         } elseif (is_a($classOrObject, i' . $this->className . '::class)) {
-            return $this->ffi->sizeof($this->ffi->type($classOrObject::getType()));
+            return self::$staticFFI->sizeof(self::$staticFFI->type($classOrObject::getType()));
         } else {
             throw new \LogicException("Unknown class/object passed to sizeof()");
         }
@@ -350,7 +355,7 @@ class Compiler {
                 $callParams[] = '$' . ($varname ?: "_$idx");
             }
             $returnType = $functionType->return;
-            if ($returnType->value !== 'void') {
+            if ($returnType->value !== 'void' || $returnType->indirections()) {
                 $return[] = '        $result = $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
                 array_push($return, ...$preReturnStmts);
                 if ($returnType->isNative) {
@@ -755,7 +760,7 @@ class Compiler {
                 $callParams[] = '$' . ($functionType->argNames[$idx] ?: "_$idx");
             }
             $returnType = $functionType->return;
-            if ($returnType->value !== 'void') {
+            if ($returnType->value !== 'void' || $returnType->indirections()) {
                 $return[] = '        $result = $this->ffi->' . $declaration->name . '(' . implode(', ', $callParams) . ');';
                 array_push($return, ...$preReturnStmts);
                 if ($returnType->isNative) {
@@ -1414,6 +1419,7 @@ class Compiler {
         $return[] = "class {$name} implements i{$this->className}" . ($type->indirections() ? ", i{$this->className}_ptr" : "") . ($dereferencable ? ", \ArrayAccess" : "") . " {";
         $return[] = '    private FFI\CData $data;';
         $return[] = '    public function __construct(FFI\CData $data) { $this->data = $data; }';
+        $return[] = '    public static function castFrom(i' . $this->className . ' $data): self { return ' . $this->className . '::cast($data, self::class); }';
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
         $return[] = '    public function equals(' . $name . ' $other): bool { return $this->data == $other->data; }';
         $nameWithPtr = $name . '_ptr';
@@ -1442,6 +1448,7 @@ class Compiler {
             } else {
                 $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
             }
+            $return[] = '    public static function array(int $size = 1): self { return ' . $this->className . '::makeArray(self::class, $size); }';
         }
         if ($name === 'string_') {
             $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
@@ -1489,6 +1496,7 @@ class Compiler {
         }
         $return[] = '    }';
         $return[] = '    public static function getType(): string { return ' . var_export($type->toValue(), true) . '; }';
+        $return[] = '    public static function size(): int { return ' . $this->className . '::sizeof(self::class); }';
         $return[] = '    public function getDefinition(): string { return static::getType(); }';
         $return[] = '}';
         return $return;
@@ -1615,5 +1623,20 @@ class Compiler {
                 }
             }
         }
+    }
+
+    /** @param Decl[] $decls
+     *  @return array{Decl[], Decl[]} type decls, the non-type decls
+     */
+    private function splitDeclsIfType(array $decls): array {
+        $typeDecls = $nonTypeDecls = [];
+        foreach ($decls as $decl) {
+            if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl || $decl instanceof Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl) {
+                $typeDecls[] = $decl;
+            } else {
+                $nonTypeDecls[] = $decl;
+            }
+        }
+        return [$typeDecls, $nonTypeDecls];
     }
 }
