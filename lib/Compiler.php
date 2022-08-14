@@ -180,7 +180,7 @@ class Compiler {
             array_push($class, ...$this->compileFunctionPtrClassImpl(4));
         }
         foreach (array_keys($this->usedBuiltinTypes) as $builtinType) {
-            if (str_starts_with($builtinType, "__builtin_")) {
+            if (str_starts_with($builtinType, "__builtin_") || str_starts_with($builtinType, "__gnuc_")) {
                 for ($i = 0; $i <= 4; ++$i) {
                     array_push($class, ...$this->compileDeclClassImpl($builtinType . str_repeat('_ptr', $i), new CompiledType($builtinType, array_fill(0, $i, null))));
                 }
