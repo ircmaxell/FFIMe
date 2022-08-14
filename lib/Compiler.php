@@ -1631,7 +1631,7 @@ class Compiler {
     private function splitDeclsIfType(array $decls): array {
         $typeDecls = $nonTypeDecls = [];
         foreach ($decls as $decl) {
-            if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl || $decl instanceof Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl) {
+            if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl || $decl instanceof Decl\NamedDecl\TypeDecl\TagDecl\RecordDecl || $decl instanceof Decl\NamedDecl\TypeDecl\TagDecl\EnumDecl) {
                 $typeDecls[] = $decl;
             } else {
                 $nonTypeDecls[] = $decl;
