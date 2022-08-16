@@ -856,7 +856,7 @@ class Compiler {
                 $return[] = '                if ($_ref = \ReflectionReference::fromArrayElement($' . $varname . ', $_k)) {';
                 $return[] = '                    $__ffi_internal_refs' . $varname . '[$_i] = &$' . $varname . '[$_k];';
                 $return[] = '                }';
-                $return[] = '                $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '->getData()') . ';';
+                $return[] = '                $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '?->getData()') . ';';
                 $return[] = '            }';
                 $return[] = '            $__ffi_internal_original' . $varname . ' = $' . $varname . ' = $_;';
 
@@ -869,7 +869,7 @@ class Compiler {
                 if ($hasIf) {
                     $return[] = '        } else {';
                 }
-                $return[] = ($hasIf ? '    ' : '') . '        $' . $varname . ' = $' . $varname . '->getData();';
+                $return[] = ($hasIf ? '    ' : '') . '        $' . $varname . ' = $' . $varname . '?->getData();';
             }
             if ($hasIf) {
                 $return[] = '        }';
@@ -1170,6 +1170,9 @@ class Compiler {
             }
             if ($type->isNative) {
                 return new CompiledExpr('((' . $this->toPHPType($type) . ') ' . $op->toValue() . ')');
+            }
+            if ($expr->expr instanceof Expr\IntegerLiteral && $expr->expr->value == 0 && !$type->isNative) {
+                return new CompiledExpr('null', $type, cdata: true);
             }
             return new CompiledExpr('$this->ffi->cast("' . $type->toValue() . '", ' . $op->value . ')', $type, cdata: true);
         }
