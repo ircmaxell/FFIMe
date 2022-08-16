@@ -834,6 +834,9 @@ class Compiler {
             if ($param->indirections() >= 1) {
                 $return[] = '        $__ffi_internal_refs' . $varname . ' = [];';
             }
+            if ($this->toPHPType($param) === 'string_ptr') {
+                $return[] = '        $strings = [];';
+            }
             if ($this->toPHPType($param) === 'string_') {
                 $return[] = '        if (\is_string($' . $varname . ')) {';
                 $return[] = '            $' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
@@ -844,6 +847,12 @@ class Compiler {
                 $return[] = '            $_ = $this->ffi->new("' . $param->rawValue . str_repeat("*", $param->indirections() - 1) . '[" . \count($' . $varname . ') . "]");';
                 $return[] = '            $_i = 0;';
                 $return[] = '            foreach ($' . $varname . ' as $_k => $_v) {';
+                if ($this->toPHPType($param) === 'string_ptr') {
+                    $return[] = '                if (\is_string($_v)) {';
+                    $return[] = '                    $_[$_i++] = ($strings[] = string_::ownedZero($_v))->addr()->getData()[0];';
+                    $return[] = '                    continue;';
+                    $return[] = '                }';
+                }
                 $return[] = '                if ($_ref = \ReflectionReference::fromArrayElement($' . $varname . ', $_k)) {';
                 $return[] = '                    $__ffi_internal_refs' . $varname . '[$_i] = &$' . $varname . '[$_k];';
                 $return[] = '                }';
@@ -1008,7 +1017,14 @@ class Compiler {
                 case Expr\UnaryOperator::KIND_DEREF:
                     $value = $op->value;
                     if ($isAssign && (($expr->expr instanceof Expr\UnaryOperator && in_array($expr->expr->kind, [Expr\UnaryOperator::KIND_PREINC, Expr\UnaryOperator::KIND_POSTINC, Expr\UnaryOperator::KIND_PREDEC, Expr\UnaryOperator::KIND_POSTDEC])) || $expr->expr instanceof Expr\BinaryOperator)) {
-                        $value = "(fn() => $value)()";
+                        // TODO: this is still wrong with more complex operations I believe
+                        if ($expr->expr instanceof Expr\UnaryOperator && $expr->expr->expr instanceof Expr\DeclRefExpr && isset($this->localVariableTypes[$expr->expr->expr->name])) {
+                            $value = '(function() use (&$' . $expr->expr->expr->name . ') { return ' . $value . '; })()';
+                        } elseif ($expr->expr instanceof Expr\BinaryOperator && $expr->expr->left instanceof Expr\DeclRefExpr && isset($this->localVariableTypes[$expr->expr->left->name])) {
+                            $value = '(function() use (&$' . $expr->expr->left->name . ') { return ' . $value . '; })()';
+                        } else {
+                            $value = "(fn() => $value)()";
+                        }
                     }
                     return $op->withCurrent($value . '[0]', -1);
                 case Expr\UnaryOperator::KIND_ALIGNOF:
@@ -1079,7 +1095,7 @@ class Compiler {
                     return $right->withCurrent($left->value . ', ' . $right->value);
             }
             if ($expr->kind & Expr\BinaryOperator::KIND_ASSIGN) {
-                return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue(charConvert: false) : ($opChar ? $left->value : 'FFI::addr(' . $left->value . ')[0]')) . ' ' . $opChar . '= ' . $right->toValue($left->type) . ')');
+                return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue(charConvert: false) : ($opChar ? $left->value : 'FFI::addr(' . $left->value . ')[0]')) . ' ' . $opChar . '= ' . $right->toValue($left->type, charConvert: false) . ')');
             }
         }
         if ($expr instanceof Expr\CallExpr) {

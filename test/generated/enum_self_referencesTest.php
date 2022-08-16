@@ -15,19 +15,19 @@ interface itest {}
 interface itest_ptr {}
 class test {
     const SOFILE = \'%s\';
-    const TYPES_DEF = \'typedef enum {
+    const TYPES_DEF = \'enum A {
+  A1 = 1,
+  A2 = A1,
+  A3 = 2,
+};
+typedef enum {
   B1 = 1,
   B2 = B1,
   B3 = (B1 | B2),
   B4,
 } B;
 \';
-    const HEADER_DEF = self::TYPES_DEF . \'enum A {
-  A1 = 1,
-  A2 = A1,
-  A3 = 2,
-};
-\';
+    const HEADER_DEF = self::TYPES_DEF . \'\';
     private FFI $ffi;
     private static FFI $staticFFI;
     private array $__literalStrings = [];

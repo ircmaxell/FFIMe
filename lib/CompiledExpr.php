@@ -39,14 +39,18 @@ class CompiledExpr
     }
 
     public function toBool(): string {
+        $value = $this->value;
         if ($this->cdata) {
             if ($this->type->isNative) {
-                return '(' . $this->value . ')->cdata';
+                $value = '(' . $this->value . ')->cdata';
             } else {
                 return '!FFI::isNull(' . $this->value . ')';
             }
         }
-        return $this->value;
+        if ($this->type->rawValue === 'char') {
+            $value = '(' . $value . ' !== "\0")';
+        }
+        return $value;
     }
 
     public function withCurrent(string $newExpr, int $modifyPointer = 0): self {
@@ -54,7 +58,7 @@ class CompiledExpr
         $cdata = $this->cdata;
         if ($modifyPointer) {
             if ($modifyPointer < 0) {
-                $indirections = array_slice($type->indirections, 1, 0);
+                $indirections = array_slice($type->indirections, 1);
             } else {
                 $indirections = [];
             }

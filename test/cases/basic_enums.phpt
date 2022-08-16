@@ -19,16 +19,16 @@ interface itest {}
 interface itest_ptr {}
 class test {
     const SOFILE = '%s';
-    const TYPES_DEF = 'typedef enum {
+    const TYPES_DEF = 'enum A {
+  A1,
+  A2,
+};
+typedef enum {
   B1,
   B2,
 } B;
 ';
-    const HEADER_DEF = self::TYPES_DEF . 'enum A {
-  A1,
-  A2,
-};
-extern void something(B b);
+    const HEADER_DEF = self::TYPES_DEF . 'extern void something(B b);
 ';
     private FFI $ffi;
     private static FFI $staticFFI;
