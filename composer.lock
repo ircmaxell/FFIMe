@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/ircmaxell/php-c-parser.git",
-                "reference": "c9267193fdfd1230b5a733622363a479ae53c313"
+                "reference": "8643407e1fa0763ffe740a417c28d5df0bb25c71"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/c9267193fdfd1230b5a733622363a479ae53c313",
-                "reference": "c9267193fdfd1230b5a733622363a479ae53c313",
+                "url": "https://api.github.com/repos/ircmaxell/php-c-parser/zipball/8643407e1fa0763ffe740a417c28d5df0bb25c71",
+                "reference": "8643407e1fa0763ffe740a417c28d5df0bb25c71",
                 "shasum": ""
             },
             "require": {
@@ -53,7 +53,7 @@
                 "issues": "https://github.com/ircmaxell/php-c-parser/issues",
                 "source": "https://github.com/ircmaxell/php-c-parser/tree/master"
             },
-            "time": "2022-08-15T11:52:31+00:00"
+            "time": "2022-08-16T16:58:01+00:00"
         },
         {
             "name": "ircmaxell/php-object-symbolresolver",

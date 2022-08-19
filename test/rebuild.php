@@ -1,4 +1,7 @@
 <?php
+
+use FFIMe\FFIMe;
+
 require __DIR__ . '/../vendor/autoload.php';
 
 const EXPECTATIONS = [
@@ -37,8 +40,7 @@ const UNSUPPORTED_SECTIONS = [
 ];
 
 
-
-
+$regen = ($argv[1] ?? "") === "--regen";
 
 foreach (provideTestsFromDir(__DIR__ . '/cases/') as $test) {
     $path = str_replace(__DIR__ . '/cases/', '', $test[0]);
@@ -50,11 +52,11 @@ foreach (provideTestsFromDir(__DIR__ . '/cases/') as $test) {
 
     $namespace = explode('\\', $targetName);
     $class = array_pop($namespace);
-    compileTest($targetFile, implode('\\', $namespace), $class, $test, true);
+    compileTest($targetFile, implode('\\', $namespace), $class, $test, true, $regen);
 }
 
 
-function compileTest(string $targetFile, string $namespace, string $class, array $test, bool $isDump): void {
+function compileTest(string $targetFile, string $namespace, string $class, array $test, bool $isDump, bool $regenerate): void {
     file_put_contents($targetFile . '.h', $test[2]);
     $parts = explode('/', $targetFile);
     $relativeTarget = array_pop($parts);
@@ -81,6 +83,21 @@ function compileTest(string $targetFile, string $namespace, string $class, array
         $assert = '$this->assertStringMatchesFormat(self::EXPECTED, trim(file_get_contents(__DIR__ . ' . $resultFile . ')));';
     } else {
         throw new \LogicException("Unknown test expectation type");
+    }
+
+    if ($regenerate) {
+        $ffime = new class(PHP_OS_FAMILY === "Darwin" ? "/usr/lib/libSystem.B.dylib" : "/lib/x86_64-linux-gnu/libc.so.6") extends FFIMe {
+            // Bypass filtering for tests
+            protected function filterSymbolDeclarations(): void {}
+        };
+        $ffime->include($targetFile . '.h');
+        $tmp = tempnam(sys_get_temp_dir(), "ffi-rebuild-");
+        $ffime->codeGen('test\test', $tmp);
+        $out = preg_replace(['(namespace \Ktest(?=;)|const __\K(x86_64|aarch64)(?=__)|const SOFILE = \'\K.+(?=\';))', '(class .*_ptr_ptr.*\{\K(.*+|\r?\n\s*+)+?(?=^}))m'], ["%s", "%a"], file_get_contents($tmp));
+        file_put_contents($test[0], preg_split("(--EXPECTF--\s+\K)", file_get_contents($test[0]))[0] . $out);
+        unlink($tmp);
+
+        $expected = trim($out);
     }
 
 
