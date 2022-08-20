@@ -1457,8 +1457,10 @@ class Compiler {
             }
             if ($type->baseTypeIsNative() && $type->indirections() === 1) {
                 if ($type->value === 'int') {
+                    $prior = 'int';
                     $return[] = '    public function deref(int $n = 0): int { return ' . ($type->rawValue === 'char' ? '\ord($this->data[$n])' : '$this->data[$n]') . '; }';
                 } elseif ($type->value === 'float') {
+                    $prior = 'float';
                     $return[] = '    public function deref(int $n = 0): float { return $this->data[$n] + 0.0; }';
                 } else {
                     // this is wrong, but unsure how to handle it...
@@ -1468,7 +1470,8 @@ class Compiler {
                 $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
             }
             $return[] = '    public static function array(int $size = 1): self { return ' . $this->className . '::makeArray(self::class, $size); }';
-            $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while ($cur = $this->data[$i++]) { $ret[] = $cur; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } } return $ret; }';
+            $handleChr = $type->rawValue === 'char' && $type->baseTypeIsNative() && $type->indirections() === 1 ? fn($val) => '\chr(' . $val . ')' : fn($val) => $val;
+            $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = ' . $handleChr('$cur') . '; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = ' . $handleChr('$this->data[$i]') . '; } } return $ret; }';
         }
         if ($name === 'string_') {
             $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
@@ -1541,7 +1544,7 @@ class Compiler {
             $return[] = '    #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }';
             $return[] = '    #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->deref($offset)->set($value); }';
             $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n], $this->types); }';
-            $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while ($cur = $this->data[$i++]) { $ret[] = $cur; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } } return $ret; }';
+            $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = $cur; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } } return $ret; }';
             $return[] = '    public function set(void_ptr | ' . $name . ' $value): void {';
             $return[] = '        if ($value instanceof ' . $name . ' && $value->types != $this->types) {';
             $return[] = '            throw new \TypeError("Cannot assign " . get_class($value) . " with type signature " . json_encode($value->types) . " to " . get_class($this) . " with type signature " . json_encode($this->types));';
