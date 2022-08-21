@@ -119,7 +119,7 @@ class string_ implements itest, itest_ptr, \ArrayAccess {
     #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = \chr($value); }
     public function deref(int $n = 0): int { return \ord($this->data[$n]); }
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
-    /** @return int[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = \ord($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = \ord($this->data[$i]); } } return $ret; }
+    /** @return int[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while ("\0" !== $cur = $this->data[$i++]) { $ret[] = \ord($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = \ord($this->data[$i]); } } return $ret; }
     public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }
     public static function persistent(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
     public static function owned(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
@@ -189,7 +189,7 @@ class int_ptr implements itest, itest_ptr, \ArrayAccess {
     #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value; }
     public function deref(int $n = 0): int { return $this->data[$n]; }
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
-    /** @return int[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = $cur; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } } return $ret; }
+    /** @return int[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } return $ret; }
     public function set(int | void_ptr | int_ptr $value): void {
         if (\is_scalar($value)) {
             $this->data[0] = $value;

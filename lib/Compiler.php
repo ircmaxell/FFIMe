@@ -1470,8 +1470,13 @@ class Compiler {
                 $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
             }
             $return[] = '    public static function array(int $size = 1): self { return ' . $this->className . '::makeArray(self::class, $size); }';
-            $handleOrd = $type->rawValue === 'char' && $type->baseTypeIsNative() && $type->indirections() === 1 ? fn($val) => '\ord(' . $val . ')' : fn($val) => $val;
-            $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = ' . $handleOrd('$cur') . '; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = ' . $handleOrd('$this->data[$i]') . '; } } return $ret; }';
+            if ($type->indirections() > 1) {
+                $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = $cur; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } } return $ret; }';
+            } elseif ($type->rawValue === "char") {
+                $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while ("\0" !== $cur = $this->data[$i++]) { $ret[] = \ord($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = \ord($this->data[$i]); } } return $ret; }';
+            } else {
+                $return[] = '    /** @return ' . $prior . '[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } return $ret; }';
+            }
         }
         if ($name === 'string_') {
             $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
