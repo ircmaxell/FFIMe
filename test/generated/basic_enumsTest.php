@@ -141,7 +141,7 @@ class string_ptr implements itest, itest_ptr, \\ArrayAccess {
     #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value->getData(); }
     public function deref(int $n = 0): string_ { return new string_($this->data[$n]); }
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
-    /** @return string_[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = $cur; } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } } return $ret; }
+    /** @return string_[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = new string_($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = new string_($this->data[$i]); } } return $ret; }
     public function set(void_ptr | string_ptr $value): void {
         FFI::addr($this->data)[0] = $value->getData();
     }
@@ -181,7 +181,7 @@ class int_ptr implements itest, itest_ptr, \\ArrayAccess {
     #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value; }
     public function deref(int $n = 0): int { return $this->data[$n]; }
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
-    /** @return int[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = $this->data[$i]; } return $ret; }
+    /** @return int[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = ($this->data[$i]); } return $ret; }
     public function set(int | void_ptr | int_ptr $value): void {
         if (\\is_scalar($value)) {
             $this->data[0] = $value;
