@@ -1448,13 +1448,15 @@ class Compiler {
         $return[] = '    public function addr(): ' . $nameWithPtr . ' { return new '. $nameWithPtr . '(FFI::addr($this->data)); }';
         if ($dereferencable) {
             $prior = substr($name, 0, -4);
+            if ($prior === 'string') {
+                $prior = 'string_';
+            } elseif ($name === 'string_') {
+                $prior = 'int';
+            }
             $return[] = '    #[\ReturnTypeWillChange] public function offsetGet($offset): ' . $prior . ' { return $this->deref($offset); }';
             $return[] = '    #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }';
             $return[] = '    #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }';
             $return[] = '    #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = ' . ($type->indirections() === 1 && $type->baseTypeIsNative() ? $type->rawValue === 'char' ? '\chr($value)' : '$value' : '$value->getData()') . '; }';
-            if ($prior === 'string') {
-                $prior = 'string_';
-            }
             if ($type->baseTypeIsNative() && $type->indirections() === 1) {
                 if ($type->value === 'int') {
                     $prior = 'int';

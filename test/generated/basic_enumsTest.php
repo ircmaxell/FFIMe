@@ -105,7 +105,7 @@ class string_ implements itest, itest_ptr, \\ArrayAccess {
     public function getData(): FFI\\CData { return $this->data; }
     public function equals(string_ $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr { return new string_ptr(FFI::addr($this->data)); }
-    #[\\ReturnTypeWillChange] public function offsetGet($offset): str { return $this->deref($offset); }
+    #[\\ReturnTypeWillChange] public function offsetGet($offset): int { return $this->deref($offset); }
     #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
     #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = \\chr($value); }
@@ -135,7 +135,7 @@ class string_ptr implements itest, itest_ptr, \\ArrayAccess {
     public function getData(): FFI\\CData { return $this->data; }
     public function equals(string_ptr $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr_ptr { return new string_ptr_ptr(FFI::addr($this->data)); }
-    #[\\ReturnTypeWillChange] public function offsetGet($offset): string { return $this->deref($offset); }
+    #[\\ReturnTypeWillChange] public function offsetGet($offset): string_ { return $this->deref($offset); }
     #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
     #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value->getData(); }
