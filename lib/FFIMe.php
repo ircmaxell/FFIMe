@@ -67,6 +67,8 @@ class FFIMe {
     private array $symbols;
 
     private bool $built = false;
+    
+    private bool $showWarnings = true;
 
     const DEFAULT_SO_SEARCH_PATHS = [
         '/usr/local/lib',
@@ -114,8 +116,14 @@ class FFIMe {
         return $this;
     }
 
+    public function showWarnings(bool $show) {
+        $this->showWarnings = $show;
+    }
+    
     public function warning(string $message) {
-        echo "[Warning] $message\n";
+        if ($this->showWarnings) {
+            echo "[Warning] $message\n";
+        }
     }
 
     /** @param string class to code map */
