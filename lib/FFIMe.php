@@ -118,6 +118,7 @@ class FFIMe {
 
     public function showWarnings(bool $show) {
         $this->showWarnings = $show;
+        return $this;
     }
     
     public function warning(string $message) {
