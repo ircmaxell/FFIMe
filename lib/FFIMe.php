@@ -83,17 +83,7 @@ class FFIMe {
         $this->context = new Context($headerSearchPaths);
         $this->cparser = new CParser;
         $this->compiler = new Compiler;
-        if (PHP_OS_FAMILY === 'Darwin' && !file_exists($this->sofile)) {
-            $definitionFile = str_replace(".dylib", ".tbd", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk{$this->sofile}");
-            preg_match_all('(symbols:\s*\[\K[^]]*)', file_get_contents($definitionFile), $m);
-            $symbols = [];
-            foreach ($m[0] as $match) {
-                $symbols[] = preg_split('(\'?\s*,\s*\'?)', trim($match, " \n'"));
-            }
-            $this->symbols = array_flip(array_merge(...$symbols));
-        } else {
-            $this->symbols = array_flip(ObjectParser::parseFor($this->sofile)->getAllSymbols());
-        }
+        $this->symbols = array_flip(ObjectParser::parseFor($this->sofile)->getAllSymbolsRecursively());
     }
 
     public function defineInt(string $identifier, int $value): void {
