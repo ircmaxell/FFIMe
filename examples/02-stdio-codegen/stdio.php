@@ -332,7 +332,7 @@ extern void funlockfile(FILE *__stream);
     const FILENAME_MAX = 4096;
     const L_ctermid = 9;
     const FOPEN_MAX = 16;
-    public function __construct(string $pathToSoFile = self::SOFILE) {
+    public function __construct(?string $pathToSoFile = self::SOFILE) {
         $this->ffi = FFI::cdef(self::HEADER_DEF, $pathToSoFile);
     }
     

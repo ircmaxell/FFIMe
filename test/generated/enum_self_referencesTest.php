@@ -37,7 +37,7 @@ typedef enum {
     const __GNUC__ = 4;
     const __GNUC_MINOR__ = 2;
     const __STDC__ = 1;
-    public function __construct(string $pathToSoFile = self::SOFILE) {
+    public function __construct(?string $pathToSoFile = self::SOFILE) {
         $this->ffi = FFI::cdef(self::HEADER_DEF, $pathToSoFile);
     }
 

@@ -275,7 +275,7 @@ class Compiler {
      *  @return string[]
      */
     protected function compileConstructor(array $decls): array {
-        $ctor[] = '    public function __construct(string $pathToSoFile = self::SOFILE) {';
+        $ctor[] = '    public function __construct(?string $pathToSoFile = self::SOFILE) {';
         $ctor[] = '        $this->ffi = FFI::cdef(self::HEADER_DEF, $pathToSoFile);';
         foreach ($decls as $decl) {
             if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
