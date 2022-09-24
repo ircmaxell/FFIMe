@@ -29,6 +29,10 @@ class Compiler {
     private array $records = [];
     /** @var int[][] */
     private array $recordBitfieldSizes = [];
+    /** @var int[] */
+    private array $lowercaseCompiledFunctions = [];
+    /** @var string[] */
+    private array $functionNames = [];
     /** @var Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl[] */
     private array $knownFunctions = [];
     /** @var CompiledFunctionType[] */
@@ -130,13 +134,19 @@ class Compiler {
                 array_push($class, ...$this->compileDecl($decl));
             } catch (UnsupportedFeatureException $e) {
                 $this->warnings[] = "{$decl->name} could not be compiled: {$e->getMessage()}";
+            } catch (\Throwable $t) {
+                throw new \LogicException("Error occurred during compilation of {$decl->name}", 0, $t);
             }
         }
         foreach ($definitions as $def) {
             try {
                 array_push($class, ...$this->compileDef($def));
             } catch (UnsupportedFeatureException $e) {
-                $this->warnings[] = "{$decl->name} could not be compiled: {$e->getMessage()}";
+                $this->warnings[] = "{$def->name} could not be compiled: {$e->getMessage()}";
+            } catch (NotExportedFunctionException $e) {
+                $this->warnings[] = "{$def->name} could not be compiled: {$e->getMessage()}";
+            } catch (\Throwable $t) {
+                throw new \LogicException("Error occurred during compilation of {$def->name}", 0, $t);
             }
         }
         foreach ($this->usedBuiltinFunctions as $function => $_) {
@@ -344,50 +354,56 @@ class Compiler {
 
         $return = [];
         if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
-            [$return, $functionType, $preReturnStmts] = $this->compileFunctionStart($def);
-            $this->knownCompiledFunctions[$def->name] = $functionType;
+            try {
+                [$return, $functionType, $preReturnStmts] = $this->compileFunctionStart($def);
+                $this->knownCompiledFunctions[$def->name] = $functionType;
 
-            $params = $functionType->args;
-            $callParams = [];
-            foreach ($params as $idx => $param) {
-                $varname = $functionType->argNames[$idx];
-                $this->localVariableTypes[$varname] = $param;
-                $callParams[] = '$' . ($varname ?: "_$idx");
-            }
-            $returnType = $functionType->return;
-            if ($returnType->value !== 'void' || $returnType->indirections()) {
-                $return[] = '        $result = $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
-                array_push($return, ...$preReturnStmts);
-                if ($returnType->isNative) {
-                    $return[] = '        return $result;';
+                $params = $functionType->args;
+                $callParams = [];
+                foreach ($params as $idx => $param) {
+                    $varname = $functionType->argNames[$idx];
+                    $this->localVariableTypes[$varname] = $param;
+                    $callParams[] = '$' . ($varname ?: "_$idx");
+                }
+                $returnType = $functionType->return;
+                if ($returnType->value !== 'void' || $returnType->indirections()) {
+                    $return[] = '        $result = $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
+                    array_push($return, ...$preReturnStmts);
+                    if ($returnType->isNative) {
+                        $return[] = '        return $result;';
+                    } else {
+                        $return[] = '        return $result === null ? null : ' . $this->toPHPValue($returnType, '$result') . ';';
+                    }
                 } else {
-                    $return[] = '        return $result === null ? null : ' . $this->toPHPValue($returnType, '$result') . ';';
+                    $return[] = '        $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
+                    array_push($return, ...$preReturnStmts);
                 }
-            } else {
-                $return[] = '        $this->' . self::COMPILED_PREFIX . $def->name . '(' . implode(', ', $callParams) . ');';
-                array_push($return, ...$preReturnStmts);
-            }
-            $return[] = "    }";
+                $return[] = "    }";
 
-            $nullableReturnType = $returnType->value === 'void' && $returnType->indirections() === 0 ? 'void' : ($returnType->isNative ? $returnType->value : '?FFI\CData');
-            $paramSignature = [];
-            foreach ($params as $idx => $param) {
-                $varname = $functionType->argNames[$idx] ?: "_$idx";
-                $paramSignature[] = ($param->isNative ? $param->value : 'FFI\CData') . ' $' . $varname;
-            }
-            $return[] = "    private function " . self::COMPILED_PREFIX . "{$def->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
-            foreach ($params as $idx => $param) {
-                if ($param->isNative) {
+                $nullableReturnType = $returnType->value === 'void' && $returnType->indirections() === 0 ? 'void' : ($returnType->isNative ? $returnType->value : '?FFI\CData');
+                $paramSignature = [];
+                foreach ($params as $idx => $param) {
                     $varname = $functionType->argNames[$idx] ?: "_$idx";
-                    $return[] = '        $' . $varname . ' = (function ($cdata, $val) { $cdata->cdata = $val; return $cdata; })($this->ffi->new("' . $param->value . '"), $' . $varname . ');';
+                    $paramSignature[] = ($param->isNative ? $param->value : 'FFI\CData') . ' $' . $varname;
                 }
+                $return[] = "    private function " . self::COMPILED_PREFIX . "{$this->functionNames[$def->name]}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
+                foreach ($params as $idx => $param) {
+                    if ($param->isNative) {
+                        $varname = $functionType->argNames[$idx] ?: "_$idx";
+                        $return[] = '        $' . $varname . ' = (function ($cdata, $val) { $cdata->cdata = $val; return $cdata; })($this->ffi->new("' . $param->value . '"), $' . $varname . ');';
+                    }
+                }
+                $stmts = $this->compileStmt($def->stmts);
+                if ($this->innerGotoLabels !== null) {
+                    $return[] = '        $' . self::COMPILED_PREFIX . '_goto_label = null;';
+                }
+                array_push($return, ...$stmts);
+                $return[] = "    }";
+            } catch (\Throwable $t) {
+                unset($this->knownCompiledFunctions[$def->name], $this->functionNames[$def->name]);
+                --$this->lowercaseCompiledFunctions[strtolower($def->name)];
+                throw $t;
             }
-            $stmts = $this->compileStmt($def->stmts);
-            if ($this->innerGotoLabels !== null) {
-                $return[] = '        $' . self::COMPILED_PREFIX . '_goto_label = null;';
-            }
-            array_push($return, ...$stmts);
-            $return[] = "    }";
         } elseif ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
             $this->globalVariableTypes[$def->name] = $this->compileType($def->type);
             $this->compiledGlobalVariables[$def->name] = true;
@@ -811,7 +827,15 @@ class Compiler {
 
     /** @return array{string[], CompiledFunctionType, string[]} */
     public function compileFunctionStart(Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl $decl): array {
+        $lcname = strtolower($decl->name);
+        $functionName = $decl->name;
+        if (isset($this->lowercaseCompiledFunctions[$lcname])) {
+            $functionName = "{$functionName}_ffi_" . ++$this->lowercaseCompiledFunctions[$lcname];
+        } else {
+            $this->lowercaseCompiledFunctions[$lcname] = 1;
+        }
         $this->knownFunctions[$decl->name] = $decl;
+        $this->functionNames[$decl->name] = $functionName;
         $preReturnStmts = [];
         $functionType = $decl->type;
         while ($functionType instanceof Type\AttributedType) {
@@ -827,7 +851,7 @@ class Compiler {
             $phpParam = $this->toPHPType($param);
             $paramSignature[] = ($phpParam !== 'void_ptr' ? ($param->indirections() > 0 ? "void_ptr | " : "") . $phpParam : "i{$this->className}_ptr") . ($param->isNative ? '' : ' | null') . ($phpParam === 'string_' ? ' | string' : '') . ($param->indirections() >= 1 ? ' | array' : '') . ' $' . $varname;
         }
-        $return[] = "    public function {$decl->name}(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
+        $return[] = "    public function $functionName(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
         foreach ($functionType->args as $idx => $param) {
             $varname = $functionType->argNames[$idx] ?: "_$idx";
             $hasIf = false;
@@ -1113,7 +1137,10 @@ class Compiler {
                         $functionType = $functionType->parent;
                     }
                     $type = $this->compileType($functionType->return);
-                    return new CompiledExpr('$this->' . (isset($this->knownCompiledFunctions[$fn_name]) ? self::COMPILED_PREFIX : 'ffi->') . $fn_name . '(' . implode(', ', $args) . ')', $type);
+                    if (!isset($this->functionNames[$fn_name])) {
+                        throw new NotExportedFunctionException("Could not compile function expression referencing non-exported symbol {$fn_name}");
+                    }
+                    return new CompiledExpr('$this->' . (isset($this->knownCompiledFunctions[$fn_name]) ? self::COMPILED_PREFIX : 'ffi->') . $this->functionNames[$fn_name] . '(' . implode(', ', $args) . ')', $type);
                 } elseif (isset(BuiltinFunction::$registry[$fn_name])) {
                     $this->usedBuiltinFunctions[$fn_name] = true;
                     return new CompiledExpr('$this->' .self::COMPILED_PREFIX . $fn_name . '(' . implode(', ', $args) . ')', BuiltinFunction::$registry[$fn_name]->type);
@@ -1144,7 +1171,10 @@ class Compiler {
                 while ($functionType instanceof Type\AttributedType) {
                     $functionType = $functionType->parent;
                 }
-                return new CompiledExpr('[$this' . (isset($this->knownCompiledFunctions[$name]) ? ', "' .self::COMPILED_PREFIX : '->ffi, "') . $name . '"]', $this->compileType($functionType));
+                if (!isset($this->functionNames[$name])) {
+                    throw new NotExportedFunctionException("Could not compile function expression referencing non-exported symbol {$name}");
+                }
+                return new CompiledExpr('[$this' . (isset($this->knownCompiledFunctions[$name]) ? ', "' .self::COMPILED_PREFIX : '->ffi, "') . $this->functionNames[$name] . '"]', $this->compileType($functionType));
             }
             if (isset($this->globalVariableTypes[$name])) {
                 $var = $this->globalVariableTypes[$name];
