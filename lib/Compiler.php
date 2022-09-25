@@ -853,19 +853,20 @@ class Compiler {
         foreach ($functionType->args as $idx => $param) {
             $varname = $functionType->argNames[$idx] ?: "_$idx";
             $phpParam = $this->toPHPType($param);
-            $paramSignature[] = ($phpParam !== 'void_ptr' ? ($param->indirections() > 0 ? "void_ptr | " : "") . $phpParam : "i{$this->className}_ptr") . ($param->isNative ? '' : ' | null') . ($phpParam === 'string_' ? ' | string' : '') . ($param->indirections() >= 1 ? ' | array' : '') . ' $' . $varname;
+            $paramSignature[] = ($phpParam !== 'void_ptr' ? ($param->indirections() > 0 ? "void_ptr | " : "") . $phpParam : "i{$this->className}_ptr") . ($param->isNative ? '' : ' | null') . ($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr' ? ' | string' : '') . ($param->indirections() >= 1 ? ' | array' : '') . ' $' . $varname;
         }
         $return[] = "    public function $functionName(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
         foreach ($functionType->args as $idx => $param) {
             $varname = $functionType->argNames[$idx] ?: "_$idx";
+            $phpParam = $this->toPHPType($param);
             $hasIf = false;
             if ($param->indirections() >= 1) {
                 $return[] = '        $__ffi_internal_refs' . $varname . ' = [];';
             }
-            if ($this->toPHPType($param) === 'string_ptr') {
+            if ($phpParam === 'string_ptr') {
                 $return[] = '        $strings = [];';
             }
-            if ($this->toPHPType($param) === 'string_') {
+            if ($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr') {
                 $return[] = '        if (\is_string($' . $varname . ')) {';
                 $return[] = '            $' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
                 $hasIf = true;
@@ -875,7 +876,7 @@ class Compiler {
                 $return[] = '            $_ = $this->ffi->new("' . $param->rawValue . str_repeat("*", $param->indirections() - 1) . '[" . \count($' . $varname . ') . "]");';
                 $return[] = '            $_i = 0;';
                 $return[] = '            foreach ($' . $varname . ' as $_k => $_v) {';
-                if ($this->toPHPType($param) === 'string_ptr') {
+                if ($phpParam === 'string_ptr') {
                     $return[] = '                if (\is_string($_v)) {';
                     $return[] = '                    $_[$_i++] = ($strings[] = string_::ownedZero($_v))->addr()->getData()[0];';
                     $return[] = '                    continue;';
