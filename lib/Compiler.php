@@ -210,7 +210,7 @@ class Compiler {
                     $nativeType = strtr($nativeType, " ", "_");
                     if ($firstNativeTypeMatch) {
                         for ($i = 1; $i <= 4; ++$i) {
-                            $class[] = '\class_alias(__NAMESPACE__ . "\\\\' . $firstNativeTypeMatch . str_repeat('_ptr', $i) . '", __NAMESPACE__ . "\\\\' . $nativeType . str_repeat('_ptr', $i) . '");';
+                            $class[] = '\class_alias(' . $firstNativeTypeMatch . str_repeat('_ptr', $i) . '::class, ' . $nativeType . str_repeat('_ptr', $i) . '::class);';
                         }
                     } else {
                         $firstNativeTypeMatch = $nativeType;
@@ -303,14 +303,18 @@ class Compiler {
         return new $to(self::$staticFFI->cast($to::getType(), $from->getData()));
     }
 
-    public static function makeArray(string $class, array $elements): i'. $this->className . ' {
+    public static function makeArray(string $class, int|array $elements): i'. $this->className . ' {
         $type = $class::getType();
         if (substr($type, -1) !== "*") {
             throw new \LogicException("Attempting to make a non-pointer element into an array");
         }
-        $cdata = self::$staticFFI->new(substr($type, 0, -1) . "[" . count($elements) . "]");
-        foreach ($elements as $key => $raw) {
-            $cdata[$key] = $raw === null ? null : $raw->getData();
+        if (is_int($elements)) {
+            $cdata = self::$staticFFI->new(substr($type, 0, -1) . "[$elements]");
+        } else {
+            $cdata = self::$staticFFI->new(substr($type, 0, -1) . "[" . count($elements) . "]");
+            foreach ($elements as $key => $raw) {
+                $cdata[$key] = \is_scalar($raw) ? \is_int($raw) && $type === "char*" ? \chr($raw) : $raw : $raw->getData();
+            }
         }
         return new $class($cdata);
     }
@@ -1410,7 +1414,7 @@ class Compiler {
             $baseIndirections = $baseType->indirections() + ($this->baseTypeIndirections[$baseType->value] ?? 0);
             $this->baseTypeIndirections[$decl->name] = $baseIndirections;
             for ($i = $baseIndirections === 0 && ($phpType === 'void' || $baseType instanceof CompiledFunctionType) ? 1 : 0; $i <= 4 - $baseIndirections; $i++) {
-                $returns[] = '\class_alias(__NAMESPACE__ . "\\\\' . ($phpType === 'string_' && $i > 0 ? 'string' : $phpType) . str_repeat('_ptr', $i) . '", __NAMESPACE__ . "\\\\' . $decl->name . str_repeat('_ptr', $i + ($baseType->isNative ? 1 : 0)) . '");';
+                $returns[] = '\class_alias(' . ($phpType === 'string_' && $i > 0 ? 'string' : $phpType) . str_repeat('_ptr', $i) . '::class, ' . $decl->name . str_repeat('_ptr', $i + ($baseType->isNative ? 1 : 0)) . '::class);';
             }
         }
         return $returns;
@@ -1483,10 +1487,6 @@ class Compiler {
             } elseif ($name === 'string_') {
                 $prior = 'int';
             }
-            $return[] = '    #[\ReturnTypeWillChange] public function offsetGet($offset): ' . $prior . ' { return $this->deref($offset); }';
-            $return[] = '    #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }';
-            $return[] = '    #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }';
-            $return[] = '    #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = ' . ($type->indirections() === 1 && $type->baseTypeIsNative() ? $type->rawValue === 'char' ? '\chr($value)' : '$value' : '$value->getData()') . '; }';
             if ($type->baseTypeIsNative() && $type->indirections() === 1) {
                 if ($type->value === 'int') {
                     $prior = 'int';
@@ -1501,6 +1501,10 @@ class Compiler {
             } else {
                 $return[] = '    public function deref(int $n = 0): ' . $prior . ' { return new ' . $prior . '($this->data[$n]); }';
             }
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetGet($offset): ' . $prior . ' { return $this->deref($offset); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }';
+            $return[] = '    #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = ' . ($type->indirections() === 1 && $type->baseTypeIsNative() ? $type->rawValue === 'char' ? '\chr($value)' : '$value' : '$value->getData()') . '; }';
             $return[] = '    public static function array(int $size = 1): self { return ' . $this->className . '::makeArray(self::class, $size); }';
             if ($type->indirections() > 1) {
                 $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = new ' . $prior . '($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = new ' . $prior . '($this->data[$i]); } } return $ret; }';
@@ -1510,10 +1514,11 @@ class Compiler {
                 $return[] = '    /** @return ' . $prior . '[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = ' . (!$type->baseTypeIsNative() ? 'new ' . $prior : '') . '($this->data[$i]); } return $ret; }';
             }
         }
-        if ($name === 'string_') {
+        if ($name === 'string_' || $name === '_Bool_ptr' || $name === 'unsigned_char_ptr' || $name === 'uint8_t_ptr') {
+            $unsigned = $name === 'string_' ? '' : 'unsigned ';
             $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
-            $return[] = '    public static function persistent(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
-            $return[] = '    public static function owned(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
+            $return[] = '    public static function persistent(string $string): self { $str = new self(FFI::new("' . $unsigned . 'char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
+            $return[] = '    public static function owned(string $string): self { $str = new self(FFI::new("' . $unsigned . 'char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
             $return[] = '    public static function persistentZero(string $string): self { return self::persistent("$string\0"); }';
             $return[] = '    public static function ownedZero(string $string): self { return self::owned("$string\0"); }';
         }

@@ -39,14 +39,18 @@ class test {
         return new $to(self::$staticFFI->cast($to::getType(), $from->getData()));
     }
 
-    public static function makeArray(string $class, array $elements): itest {
+    public static function makeArray(string $class, int|array $elements): itest {
         $type = $class::getType();
         if (substr($type, -1) !== "*") {
             throw new \\LogicException("Attempting to make a non-pointer element into an array");
         }
-        $cdata = self::$staticFFI->new(substr($type, 0, -1) . "[" . count($elements) . "]");
-        foreach ($elements as $key => $raw) {
-            $cdata[$key] = $raw === null ? null : $raw->getData();
+        if (is_int($elements)) {
+            $cdata = self::$staticFFI->new(substr($type, 0, -1) . "[$elements]");
+        } else {
+            $cdata = self::$staticFFI->new(substr($type, 0, -1) . "[" . count($elements) . "]");
+            foreach ($elements as $key => $raw) {
+                $cdata[$key] = \\is_scalar($raw) ? \\is_int($raw) && $type === "char*" ? \\chr($raw) : $raw : $raw->getData();
+            }
         }
         return new $class($cdata);
     }
@@ -127,11 +131,11 @@ class string_ implements itest, itest_ptr, \\ArrayAccess {
     public function getData(): FFI\\CData { return $this->data; }
     public function equals(string_ $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr { return new string_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): int { return \\ord($this->data[$n]); }
     #[\\ReturnTypeWillChange] public function offsetGet($offset): int { return $this->deref($offset); }
     #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
     #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = \\chr($value); }
-    public function deref(int $n = 0): int { return \\ord($this->data[$n]); }
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
     /** @return int[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while ("\\0" !== $cur = $this->data[$i++]) { $ret[] = \\ord($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = \\ord($this->data[$i]); } } return $ret; }
     public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }
@@ -157,11 +161,11 @@ class string_ptr implements itest, itest_ptr, \\ArrayAccess {
     public function getData(): FFI\\CData { return $this->data; }
     public function equals(string_ptr $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr_ptr { return new string_ptr_ptr(FFI::addr($this->data)); }
+    public function deref(int $n = 0): string_ { return new string_($this->data[$n]); }
     #[\\ReturnTypeWillChange] public function offsetGet($offset): string_ { return $this->deref($offset); }
     #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
     #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value->getData(); }
-    public function deref(int $n = 0): string_ { return new string_($this->data[$n]); }
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
     /** @return string_[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = new string_($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = new string_($this->data[$i]); } } return $ret; }
     public function set(void_ptr | string_ptr $value): void {
@@ -197,11 +201,11 @@ class size_t_ptr implements itest, itest_ptr, \\ArrayAccess {
     public function getData(): FFI\\CData { return $this->data; }
     public function equals(size_t_ptr $other): bool { return $this->data == $other->data; }
     public function addr(): size_t_ptr_ptr { return new size_t_ptr_ptr(FFI::addr($this->data)); }
-    #[\\ReturnTypeWillChange] public function offsetGet($offset): size_t { return $this->deref($offset); }
+    public function deref(int $n = 0): int { return $this->data[$n]; }
+    #[\\ReturnTypeWillChange] public function offsetGet($offset): int { return $this->deref($offset); }
     #[\\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \\Error("Cannot unset C structures"); }
     #[\\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value; }
-    public function deref(int $n = 0): int { return $this->data[$n]; }
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
     /** @return int[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = ($this->data[$i]); } return $ret; }
     public function set(int | void_ptr | size_t_ptr $value): void {
@@ -218,10 +222,10 @@ class size_t_ptr implements itest, itest_ptr, \\ArrayAccess {
 class size_t_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {%a}
 class size_t_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {%a}
 class size_t_ptr_ptr_ptr_ptr implements itest, itest_ptr, \\ArrayAccess {%a}
-\\class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef");
-\\class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef_ptr");
-\\class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr_ptr_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef_ptr_ptr");
-\\class_alias(__NAMESPACE__ . "\\\\struct_LLVMOpaqueModule_ptr_ptr_ptr_ptr", __NAMESPACE__ . "\\\\LLVMModuleRef_ptr_ptr_ptr");';
+\\class_alias(struct_LLVMOpaqueModule_ptr::class, LLVMModuleRef::class);
+\\class_alias(struct_LLVMOpaqueModule_ptr_ptr::class, LLVMModuleRef_ptr::class);
+\\class_alias(struct_LLVMOpaqueModule_ptr_ptr_ptr::class, LLVMModuleRef_ptr_ptr::class);
+\\class_alias(struct_LLVMOpaqueModule_ptr_ptr_ptr_ptr::class, LLVMModuleRef_ptr_ptr_ptr::class);';
 
     protected FFIMe $lib;
     protected Printer $printer;
