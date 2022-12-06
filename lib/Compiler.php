@@ -79,8 +79,6 @@ class Compiler {
             $class[] = "namespace " . $namespace . ";";
             $class[] = "use FFI;";
             $class[] = "use " . $namespace . "\\double;"; // suppress warning
-        } else {
-            $class[] = "use double;";
         }
         $this->className = $className;
         $class[] = "interface i{$className} {}";
