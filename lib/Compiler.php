@@ -1542,7 +1542,7 @@ class Compiler {
                 } else {
                     $return[] = '                (new ' . $this->toPHPType($fieldType) . '($this->data' . $deref . '->' . $field . ($fieldType instanceof CompiledFunctionType ? ', ' . $this->linearArrayExport($this->compilePHPFunctionTypeArray($fieldType)) : '') . '))->set($value);';
                 }
-                $return[] = '                break;';
+                $return[] = '                return;';
             }
             $return[] = '        }';
             $return[] = '        throw new \Error("Unknown field $prop on type " . self::getType());';
