@@ -295,7 +295,7 @@ class Compiler {
     protected function compileMethods(): string {
         return '
     public static function cast(i'. $this->className . ' $from, string $to): i' . $this->className . ' {
-        if (!is_a($to, i' . $this->className . '::class)) {
+        if (!is_a($to, i' . $this->className . '::class, true)) {
             throw new \LogicException("Cannot cast to a non-wrapper type");
         }
         return new $to(self::$staticFFI->cast($to::getType(), $from->getData()));
@@ -319,9 +319,9 @@ class Compiler {
 
     public static function sizeof($classOrObject): int {
         if (is_object($classOrObject) && $classOrObject instanceof i' . $this->className . ') {
-            return self::$staticFFI->sizeof($classOrObject->getData());
-        } elseif (is_a($classOrObject, i' . $this->className . '::class)) {
-            return self::$staticFFI->sizeof(self::$staticFFI->type($classOrObject::getType()));
+            return FFI::sizeof($classOrObject->getData());
+        } elseif (is_a($classOrObject, i' . $this->className . '::class, true)) {
+            return FFI::sizeof(self::$staticFFI->type($classOrObject::getType()));
         } else {
             throw new \LogicException("Unknown class/object passed to sizeof()");
         }
