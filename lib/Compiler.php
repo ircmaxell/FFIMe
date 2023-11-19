@@ -867,6 +867,9 @@ class Compiler {
             if ($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr') {
                 $return[] = '        if (\is_string($' . $varname . ')) {';
                 $return[] = '            $' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
+                if ($phpParam === 'uint8_t_ptr') {
+                    $return[] = '            $' . $varname . ' = $this->ffi->cast("uint8_t*", $' . $varname . ');';
+                }
                 $hasIf = true;
             }
             if ($param->indirections() >= 1) {
