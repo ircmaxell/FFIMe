@@ -91,6 +91,7 @@ class Compiler {
         $class[] = "    const HEADER_DEF = self::TYPES_DEF . " . var_export($this->compileDeclsToCode($nonTypeDecls), true) . ';';
         $class[] = "    private FFI \$ffi;";
         $class[] = "    private static FFI \$staticFFI;";
+        $class[] = "    private static \WeakMap \$__arrayWeakMap;"; // ensure that cdata is not freed as long as the pointer lives
         $class[] = "    private array \$__literalStrings = [];";
         foreach ($defines as $define => $value) {
             // remove type qualifiers
@@ -151,7 +152,7 @@ class Compiler {
             array_push($class, ...BuiltinFunction::$registry[$function]->print());
         }
         $class[] = "}";
-        $class[] = "(function() { self::\$staticFFI = \FFI::cdef($className::TYPES_DEF); })->bindTo(null, $className::class)();";
+        $class[] = "(function() { self::\$staticFFI = \FFI::cdef($className::TYPES_DEF); self::\$__arrayWeakMap = new \WeakMap; })->bindTo(null, $className::class)();";
         $class[] = "";
 
         $publicProperties = ["/**"];
@@ -314,7 +315,9 @@ class Compiler {
                 $cdata[$key] = \is_scalar($raw) ? \is_int($raw) && $type === "char*" ? \chr($raw) : $raw : $raw->getData();
             }
         }
-        return new $class($cdata);
+        $object = new $class(self::$staticFFI->cast($type, \FFI::addr($cdata)));
+        self::$__arrayWeakMap[$object] = $cdata;
+        return $object;
     }
 
     public static function sizeof($classOrObject): int {
@@ -745,7 +748,7 @@ class Compiler {
                 [$innerType, $innerIndirectionIndex] = $designatorGenerator->key();
                 $initializerArgs[$arg] = $this->compileExpr($initializerExpr->expr)->toValue($innerIndirectionIndex ? new CompiledType($innerType->value, array_slice($innerType->indirections, $innerIndirectionIndex), $innerType->rawValue) : $innerType);
                 $cdataPath = '$cdata' . $compiledDesignator . $designatorGenerator->current();
-                $initializerAssignments[$arg] = ($innerType->isNative ? $cdataPath . '->cdata' : 'FFI::addr(' . $cdataPath . ')[0]') . ' = ' . $arg . ';';
+                $initializerAssignments[$arg] = ($innerType->isNative ? $cdataPath . '->cdata' : ($cdataPath == '$cdata' ? 'FFI::addr($cdata)[0]' : $cdataPath)) . ' = ' . $arg . ';';
             }
         })($type, $initializers);
         if (!$initializerArgs) {
@@ -866,9 +869,11 @@ class Compiler {
             }
             if ($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr') {
                 $return[] = '        if (\is_string($' . $varname . ')) {';
-                $return[] = '            $' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
                 if ($phpParam === 'uint8_t_ptr') {
-                    $return[] = '            $' . $varname . ' = $this->ffi->cast("uint8_t*", $' . $varname . ');';
+                    $return[] = '            $__ffi_str_' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
+                    $return[] = '            $' . $varname . ' = $this->ffi->cast("uint8_t*", \FFI::addr($__ffi_str_' . $varname . '));';
+                } else {
+                    $return[] = '            $' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
                 }
                 $hasIf = true;
             }
@@ -900,6 +905,11 @@ class Compiler {
                     $return[] = '        } else {';
                 }
                 $return[] = ($hasIf ? '    ' : '') . '        $' . $varname . ' = $' . $varname . '?->getData();';
+                if ($param->indirections() >= 1) {
+                    $return[] = ($hasIf ? '    ' : '') . '        if ($' . $varname . ' !== null) {';
+                    $return[] = ($hasIf ? '    ' : '') . '            $' . $varname . ' = $this->ffi->cast("' . $param->toValue() . '", $' . $varname . ');';
+                    $return[] = ($hasIf ? '    ' : '') . '        }';
+                }
             }
             if ($hasIf) {
                 $return[] = '        }';
@@ -1000,7 +1010,7 @@ class Compiler {
     }
 
     public function calcSize(CompiledType $type) {
-        return \FFI::sizeof(\FFI::type($this->buildTypeDefinition($type)));
+        return \FFI::sizeof(FFI::cdef()->type($this->buildTypeDefinition($type)));
     }
 
     public function compileExpr(Expr $expr, bool $isAssign = false, bool $isAddrOf = false): CompiledExpr {
@@ -1125,7 +1135,7 @@ class Compiler {
                     return $right->withCurrent($left->value . ', ' . $right->value);
             }
             if ($expr->kind & Expr\BinaryOperator::KIND_ASSIGN) {
-                return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue(charConvert: false) : ($opChar ? $left->value : 'FFI::addr(' . $left->value . ')[0]')) . ' ' . $opChar . '= ' . $right->toValue($left->type, charConvert: false) . ')');
+                return $left->withCurrent('(' . (($expr->left instanceof Expr\DimFetchExpr || ($expr->left instanceof Expr\UnaryOperator && $expr->left->kind === Expr\UnaryOperator::KIND_DEREF) || !$left->type->indirections()) && (!str_starts_with($left->value, '$this->') || str_starts_with($left->value, '$this->ffi')) ? $left->toValue(charConvert: false) : ($opChar || strpos($left->value, ">", str_starts_with($left->value, '$this->') ? 7 : 0) !== false ? $left->value : 'FFI::addr(' . $left->value . ')[0]')) . ' ' . $opChar . '= ' . $right->toValue($left->type, charConvert: false) . ')');
             }
         }
         if ($expr instanceof Expr\CallExpr) {
@@ -1286,7 +1296,7 @@ class Compiler {
         $grouped = [];
         foreach ($types as $type) {
             if ($type !== 'char') { // special cased as string
-                $size = $type === '_Bool' ? 'u1' : (($type[0] === 'u' ? 'u' : '') . (str_contains($type, "128") ? 16 : FFI::sizeof(FFI::type($type))));
+                $size = $type === '_Bool' ? 'u1' : (($type[0] === 'u' ? 'u' : '') . (str_contains($type, "128") ? 16 : FFI::sizeof(FFI::cdef()->type($type))));
                 $grouped[$size][] = $type;
             }
         }
@@ -1519,8 +1529,8 @@ class Compiler {
         if ($name === 'string_' || $name === '_Bool_ptr' || $name === 'unsigned_char_ptr' || $name === 'uint8_t_ptr') {
             $unsigned = $name === 'string_' ? '' : 'unsigned ';
             $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
-            $return[] = '    public static function persistent(string $string): self { $str = new self(FFI::new("' . $unsigned . 'char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
-            $return[] = '    public static function owned(string $string): self { $str = new self(FFI::new("' . $unsigned . 'char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
+            $return[] = '    public static function persistent(string $string): self { $str = new self(FFI::cdef()->new("' . $unsigned . 'char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
+            $return[] = '    public static function owned(string $string): self { $str = new self(FFI::cdef()->new("' . $unsigned . 'char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
             $return[] = '    public static function persistentZero(string $string): self { return self::persistent("$string\0"); }';
             $return[] = '    public static function ownedZero(string $string): self { return self::owned("$string\0"); }';
         }

@@ -36,6 +36,7 @@ typedef enum {
     const HEADER_DEF = self::TYPES_DEF . '';
     private FFI $ffi;
     private static FFI $staticFFI;
+    private static \WeakMap $__arrayWeakMap;
     private array $__literalStrings = [];
     const __%s__ = 1;
     const __LP64__ = 1;
@@ -48,7 +49,7 @@ typedef enum {
     }
 
     public static function cast(itest $from, string $to): itest {
-        if (!is_a($to, itest::class)) {
+        if (!is_a($to, itest::class, true)) {
             throw new \LogicException("Cannot cast to a non-wrapper type");
         }
         return new $to(self::$staticFFI->cast($to::getType(), $from->getData()));
@@ -67,14 +68,16 @@ typedef enum {
                 $cdata[$key] = \is_scalar($raw) ? \is_int($raw) && $type === "char*" ? \chr($raw) : $raw : $raw->getData();
             }
         }
-        return new $class($cdata);
+        $object = new $class(self::$staticFFI->cast($type, \FFI::addr($cdata)));
+        self::$__arrayWeakMap[$object] = $cdata;
+        return $object;
     }
 
     public static function sizeof($classOrObject): int {
         if (is_object($classOrObject) && $classOrObject instanceof itest) {
-            return self::$staticFFI->sizeof($classOrObject->getData());
-        } elseif (is_a($classOrObject, itest::class)) {
-            return self::$staticFFI->sizeof(self::$staticFFI->type($classOrObject::getType()));
+            return FFI::sizeof($classOrObject->getData());
+        } elseif (is_a($classOrObject, itest::class, true)) {
+            return FFI::sizeof(self::$staticFFI->type($classOrObject::getType()));
         } else {
             throw new \LogicException("Unknown class/object passed to sizeof()");
         }
@@ -108,7 +111,7 @@ typedef enum {
     const B3 = ((self::B1 | self::B2)) + 0;
     const B4 = ((self::B1 | self::B2)) + 1;
 }
-(function() { self::$staticFFI = \FFI::cdef(test::TYPES_DEF); })->bindTo(null, test::class)();
+(function() { self::$staticFFI = \FFI::cdef(test::TYPES_DEF); self::$__arrayWeakMap = new \WeakMap; })->bindTo(null, test::class)();
 
 class string_ implements itest, itest_ptr, \ArrayAccess {
     private FFI\CData $data;
@@ -125,8 +128,8 @@ class string_ implements itest, itest_ptr, \ArrayAccess {
     public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
     /** @return int[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while ("\0" !== $cur = $this->data[$i++]) { $ret[] = \ord($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = \ord($this->data[$i]); } } return $ret; }
     public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }
-    public static function persistent(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
-    public static function owned(string $string): self { $str = new self(FFI::new("char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
+    public static function persistent(string $string): self { $str = new self(FFI::cdef()->new("char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
+    public static function owned(string $string): self { $str = new self(FFI::cdef()->new("char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
     public static function persistentZero(string $string): self { return self::persistent("$string\0"); }
     public static function ownedZero(string $string): self { return self::owned("$string\0"); }
     public function set(int | void_ptr | string_ $value): void {
