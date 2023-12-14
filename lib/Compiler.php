@@ -1528,7 +1528,8 @@ class Compiler {
         }
         if ($name === 'string_' || $name === '_Bool_ptr' || $name === 'unsigned_char_ptr' || $name === 'uint8_t_ptr') {
             $unsigned = $name === 'string_' ? '' : 'unsigned ';
-            $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }';
+            $castNonStr = $name === 'string_' ? '$this->data' : 'FFI::cdef()->cast("char*", $this->data)';
+            $return[] = '    public function toString(?int $length = null): string { return $length === null ? FFI::string(' . $castNonStr . ') : FFI::string(' . $castNonStr . ', $length); }';
             $return[] = '    public static function persistent(string $string): self { $str = new self(FFI::cdef()->new("' . $unsigned . 'char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
             $return[] = '    public static function owned(string $string): self { $str = new self(FFI::cdef()->new("' . $unsigned . 'char[" . \strlen($string) . "]", true)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }';
             $return[] = '    public static function persistentZero(string $string): self { return self::persistent("$string\0"); }';
@@ -1553,7 +1554,7 @@ class Compiler {
                 if ($fieldType->isNative) {
                     $return[] = '                $this->data' . $deref . '->' . $field . ' = ' . ($fieldType->rawValue === 'char' ? '\chr($value)' : '$value') . ';';
                 } else {
-                    $return[] = '                (new ' . $this->toPHPType($fieldType) . '($this->data' . $deref . '->' . $field . ($fieldType instanceof CompiledFunctionType ? ', ' . $this->linearArrayExport($this->compilePHPFunctionTypeArray($fieldType)) : '') . '))->set($value);';
+                    $return[] = '                (new ' . $this->toPHPType($fieldType) . '($_ = &$this->data' . $deref . '->' . $field . ($fieldType instanceof CompiledFunctionType ? ', ' . $this->linearArrayExport($this->compilePHPFunctionTypeArray($fieldType)) : '') . '))->set($value);';
                 }
                 $return[] = '                return;';
             }
