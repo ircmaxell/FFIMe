@@ -881,17 +881,23 @@ class Compiler {
                 $return[] = '        ' . ($hasIf ? '} else' : '') . 'if (\is_array($' . $varname . ')) {';
                 $return[] = '            $_ = $this->ffi->new("' . $param->rawValue . str_repeat("*", $param->indirections() - 1) . '[" . \count($' . $varname . ') . "]");';
                 $return[] = '            $_i = 0;';
-                $return[] = '            foreach ($' . $varname . ' as $_k => $_v) {';
+                $return[] = '            if ($' . $varname . ') {';
+                $return[] = '                if ($_ref = \ReflectionReference::fromArrayElement($' . $varname . ', $_k = \key($' . $varname . '))) {'; // if the first value is ref, assume all ref
+                $return[] = '                    foreach ($' . $varname . ' as $_k => $_v) {';
+                $return[] = '                        $__ffi_internal_refs' . $varname . '[$_i] = &$' . $varname . '[$_k];';
+                $return[] = '                        $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '?->getData()') . ';';
+                $return[] = '                    }';
+                $return[] = '                } else {';
+                $return[] = '                    foreach ($' . $varname . ' as $_k => $_v) {';
                 if ($phpParam === 'string_ptr') {
-                    $return[] = '                if (\is_string($_v)) {';
-                    $return[] = '                    $_[$_i++] = ($strings[] = string_::ownedZero($_v))->addr()->getData()[0];';
-                    $return[] = '                    continue;';
-                    $return[] = '                }';
+                    $return[] = '                        if (\is_string($_v)) {';
+                    $return[] = '                            $_[$_i++] = ($strings[] = string_::ownedZero($_v))->addr()->getData()[0];';
+                    $return[] = '                            continue;';
+                    $return[] = '                        }';
                 }
-                $return[] = '                if ($_ref = \ReflectionReference::fromArrayElement($' . $varname . ', $_k)) {';
-                $return[] = '                    $__ffi_internal_refs' . $varname . '[$_i] = &$' . $varname . '[$_k];';
+                $return[] = '                        $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '?->getData()') . ';';
+                $return[] = '                    }';
                 $return[] = '                }';
-                $return[] = '                $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '?->getData()') . ';';
                 $return[] = '            }';
                 $return[] = '            $__ffi_internal_original' . $varname . ' = $' . $varname . ' = $_;';
 
