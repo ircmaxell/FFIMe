@@ -25,7 +25,7 @@ static inline int calcHash(int len, const char *str) {
 }
 HEADER);
 
-        $testCase = new generated\DuffsDevice\Defs;
+        $testCase = generated\DuffsDevice\Defs::ffi();
 
         $this->assertSame(32 * (9 ** 3), $testCase->calcHash(1, \chr(32)));
         $this->assertSame((32 * (9 ** 3)) ^ ((9 ** 4) * 64) ^ ((9 ** 5) * 16) ^ ((9 ** 6) * 48) ^ ((9 ** 7) * 80), $testCase->calcHash(5, \chr(32) . \chr(64) . \chr(16) . \chr(48) . \chr(80)));

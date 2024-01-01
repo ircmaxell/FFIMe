@@ -3,7 +3,6 @@
 namespace FFIMe\Test\InlineFunctions;
 
 use FFIMe\Test\InlineFunctions\generated\BasicStructs\string_;
-use FFIMe\Test\InlineFunctions\generated\void_ptr;
 
 class BasicStructs extends InlineTestcase {
     public function testBasicStructManipulation() {
@@ -41,7 +40,7 @@ static inline void update_foo_bar(struct foo *foo) {
 }
 HEADER);
 
-        $testCase = new generated\BasicStructs\Defs;
+        $testCase = generated\BasicStructs\Defs::ffi();
         $str = string_::persistentZero("some str");
         $foo = $testCase->init_foo($str);
 

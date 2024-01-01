@@ -30,7 +30,7 @@ static inline const char *call_bar(int integer) {
 
 HEADER);
 
-        $testCase = new generated\FunctionPointers\Defs;
+        $testCase = generated\FunctionPointers\Defs::ffi();
 
         $testCase->global_bar = \Closure::fromCallable([$testCase, 'init_other_bar']);
         self::assertSame("oo", $testCase->call_bar(1)->toString());

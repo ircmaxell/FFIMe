@@ -15,6 +15,16 @@ use test\double;
 interface itest {}
 interface itest_ptr {}
 class test {
+    const __%s__ = 1;
+    const __LP64__ = 1;
+    const __GNUC_VA_LIST = 1;
+    const __GNUC__ = 4;
+    const __GNUC_MINOR__ = 2;
+    const __STDC__ = 1;
+    public static function ffi(?string $pathToSoFile = testFFI::SOFILE): testFFI { return new testFFI($pathToSoFile); }
+    public static function sizeof($classOrObject): int { return testFFI::sizeof($classOrObject); }
+}
+class testFFI {
     const SOFILE = '%s';
     const TYPES_DEF = 'typedef long int intmax_t;
 typedef unsigned long int uintmax_t;
@@ -26,12 +36,6 @@ extern uintmax_t blah();
     private static FFI $staticFFI;
     private static \WeakMap $__arrayWeakMap;
     private array $__literalStrings = [];
-    const __%s__ = 1;
-    const __LP64__ = 1;
-    const __GNUC_VA_LIST = 1;
-    const __GNUC__ = 4;
-    const __GNUC_MINOR__ = 2;
-    const __STDC__ = 1;
     public function __construct(?string $pathToSoFile = self::SOFILE) {
         $this->ffi = FFI::cdef(self::HEADER_DEF, $pathToSoFile);
     }
@@ -98,12 +102,11 @@ extern uintmax_t blah();
         return $result;
     }
 }
-(function() { self::$staticFFI = \FFI::cdef(test::TYPES_DEF); self::$__arrayWeakMap = new \WeakMap; })->bindTo(null, test::class)();
 
 class string_ implements itest, itest_ptr, \ArrayAccess {
     private FFI\CData $data;
     public function __construct(FFI\CData $data) { $this->data = $data; }
-    public static function castFrom(itest $data): self { return test::cast($data, self::class); }
+    public static function castFrom(itest $data): self { return testFFI::cast($data, self::class); }
     public function getData(): FFI\CData { return $this->data; }
     public function equals(string_ $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr { return new string_ptr(FFI::addr($this->data)); }
@@ -112,7 +115,7 @@ class string_ implements itest, itest_ptr, \ArrayAccess {
     #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }
     #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = \chr($value); }
-    public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
+    public static function array(int $size = 1): self { return testFFI::makeArray(self::class, $size); }
     /** @return int[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while ("\0" !== $cur = $this->data[$i++]) { $ret[] = \ord($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = \ord($this->data[$i]); } } return $ret; }
     public function toString(?int $length = null): string { return $length === null ? FFI::string($this->data) : FFI::string($this->data, $length); }
     public static function persistent(string $string): self { $str = new self(FFI::cdef()->new("char[" . \strlen($string) . "]", false)); FFI::memcpy($str->data, $string, \strlen($string)); return $str; }
@@ -127,13 +130,13 @@ class string_ implements itest, itest_ptr, \ArrayAccess {
         }
     }
     public static function getType(): string { return 'char*'; }
-    public static function size(): int { return test::sizeof(self::class); }
+    public static function size(): int { return testFFI::sizeof(self::class); }
     public function getDefinition(): string { return static::getType(); }
 }
 class string_ptr implements itest, itest_ptr, \ArrayAccess {
     private FFI\CData $data;
     public function __construct(FFI\CData $data) { $this->data = $data; }
-    public static function castFrom(itest $data): self { return test::cast($data, self::class); }
+    public static function castFrom(itest $data): self { return testFFI::cast($data, self::class); }
     public function getData(): FFI\CData { return $this->data; }
     public function equals(string_ptr $other): bool { return $this->data == $other->data; }
     public function addr(): string_ptr_ptr { return new string_ptr_ptr(FFI::addr($this->data)); }
@@ -142,13 +145,13 @@ class string_ptr implements itest, itest_ptr, \ArrayAccess {
     #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }
     #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value->getData(); }
-    public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
+    public static function array(int $size = 1): self { return testFFI::makeArray(self::class, $size); }
     /** @return string_[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = new string_($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = new string_($this->data[$i]); } } return $ret; }
     public function set(void_ptr | string_ptr $value): void {
         FFI::addr($this->data)[0] = $value->getData();
     }
     public static function getType(): string { return 'char**'; }
-    public static function size(): int { return test::sizeof(self::class); }
+    public static function size(): int { return testFFI::sizeof(self::class); }
     public function getDefinition(): string { return static::getType(); }
 }
 class string_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
@@ -156,7 +159,7 @@ class string_ptr_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
 class void_ptr implements itest, itest_ptr {
     private FFI\CData $data;
     public function __construct(FFI\CData $data) { $this->data = $data; }
-    public static function castFrom(itest $data): self { return test::cast($data, self::class); }
+    public static function castFrom(itest $data): self { return testFFI::cast($data, self::class); }
     public function getData(): FFI\CData { return $this->data; }
     public function equals(void_ptr $other): bool { return $this->data == $other->data; }
     public function addr(): void_ptr_ptr { return new void_ptr_ptr(FFI::addr($this->data)); }
@@ -164,7 +167,7 @@ class void_ptr implements itest, itest_ptr {
         FFI::addr($this->data)[0] = $value->getData();
     }
     public static function getType(): string { return 'void*'; }
-    public static function size(): int { return test::sizeof(self::class); }
+    public static function size(): int { return testFFI::sizeof(self::class); }
     public function getDefinition(): string { return static::getType(); }
 }
 class void_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
@@ -173,7 +176,7 @@ class void_ptr_ptr_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
 class long_int_ptr implements itest, itest_ptr, \ArrayAccess {
     private FFI\CData $data;
     public function __construct(FFI\CData $data) { $this->data = $data; }
-    public static function castFrom(itest $data): self { return test::cast($data, self::class); }
+    public static function castFrom(itest $data): self { return testFFI::cast($data, self::class); }
     public function getData(): FFI\CData { return $this->data; }
     public function equals(long_int_ptr $other): bool { return $this->data == $other->data; }
     public function addr(): long_int_ptr_ptr { return new long_int_ptr_ptr(FFI::addr($this->data)); }
@@ -182,7 +185,7 @@ class long_int_ptr implements itest, itest_ptr, \ArrayAccess {
     #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }
     #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value; }
-    public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
+    public static function array(int $size = 1): self { return testFFI::makeArray(self::class, $size); }
     /** @return int[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = ($this->data[$i]); } return $ret; }
     public function set(int | void_ptr | long_int_ptr $value): void {
         if (\is_scalar($value)) {
@@ -192,7 +195,7 @@ class long_int_ptr implements itest, itest_ptr, \ArrayAccess {
         }
     }
     public static function getType(): string { return 'long_int*'; }
-    public static function size(): int { return test::sizeof(self::class); }
+    public static function size(): int { return testFFI::sizeof(self::class); }
     public function getDefinition(): string { return static::getType(); }
 }
 class long_int_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
@@ -201,7 +204,7 @@ class long_int_ptr_ptr_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
 class unsigned_long_int_ptr implements itest, itest_ptr, \ArrayAccess {
     private FFI\CData $data;
     public function __construct(FFI\CData $data) { $this->data = $data; }
-    public static function castFrom(itest $data): self { return test::cast($data, self::class); }
+    public static function castFrom(itest $data): self { return testFFI::cast($data, self::class); }
     public function getData(): FFI\CData { return $this->data; }
     public function equals(unsigned_long_int_ptr $other): bool { return $this->data == $other->data; }
     public function addr(): unsigned_long_int_ptr_ptr { return new unsigned_long_int_ptr_ptr(FFI::addr($this->data)); }
@@ -210,7 +213,7 @@ class unsigned_long_int_ptr implements itest, itest_ptr, \ArrayAccess {
     #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }
     #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }
     #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = $value; }
-    public static function array(int $size = 1): self { return test::makeArray(self::class, $size); }
+    public static function array(int $size = 1): self { return testFFI::makeArray(self::class, $size); }
     /** @return int[] */ public function toArray(int $length): array { $ret = []; for ($i = 0; $i < $length; ++$i) { $ret[] = ($this->data[$i]); } return $ret; }
     public function set(int | void_ptr | unsigned_long_int_ptr $value): void {
         if (\is_scalar($value)) {
@@ -220,12 +223,13 @@ class unsigned_long_int_ptr implements itest, itest_ptr, \ArrayAccess {
         }
     }
     public static function getType(): string { return 'unsigned_long_int*'; }
-    public static function size(): int { return test::sizeof(self::class); }
+    public static function size(): int { return testFFI::sizeof(self::class); }
     public function getDefinition(): string { return static::getType(); }
 }
 class unsigned_long_int_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
 class unsigned_long_int_ptr_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
 class unsigned_long_int_ptr_ptr_ptr_ptr implements itest, itest_ptr, \ArrayAccess {%a}
+(function() { self::$staticFFI = \FFI::cdef(testFFI::TYPES_DEF); self::$__arrayWeakMap = new \WeakMap; })->bindTo(null, testFFI::class)();
 \class_alias(long_int_ptr::class, intmax_t_ptr::class);
 \class_alias(long_int_ptr_ptr::class, intmax_t_ptr_ptr::class);
 \class_alias(long_int_ptr_ptr_ptr::class, intmax_t_ptr_ptr_ptr::class);

@@ -2,9 +2,6 @@
 
 namespace FFIMe\Test\InlineFunctions;
 
-use FFIMe\Test\InlineFunctions\generated\BasicStructs\string_;
-use FFIMe\Test\InlineFunctions\generated\void_ptr;
-
 class PassingStringArray extends InlineTestcase {
     public function testBasicStructManipulation() {
         $this->compile(<<<HEADER
@@ -29,7 +26,7 @@ static inline struct foo collect_strs(const char **str) {
 }
 HEADER);
 
-        $testCase = new generated\PassingStringArray\Defs;
+        $testCase = generated\PassingStringArray\Defs::ffi();
         $foo = $testCase->collect_strs(["foo", "bar", null]);
 
         $this->assertSame("foo", $foo->str1->toString());

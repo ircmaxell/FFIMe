@@ -13,6 +13,7 @@ use PHPObjectSymbolResolver\Parser as ObjectParser;
 
 
 class FFIMe {
+    const LIBC = PHP_OS_FAMILY === "Darwin" ? "/usr/lib/libSystem.B.dylib" : "/lib/x86_64-linux-gnu/libc.so.6";
 
     const TYPES_TO_REMOVE = [
         'void',
@@ -59,7 +60,10 @@ class FFIMe {
     /** @var string[] */
     private array $numericDefines = [];
 
-    private Compiler $compiler;
+    private ?array $restrictedCompiledClasses = null;
+    private ?array $restrictedCompiledFunctions = null;
+    private ?array $restrictedCompiledConstants = null;
+
     private Context $context;
     private CParser $cparser;
 
@@ -67,7 +71,7 @@ class FFIMe {
     private array $symbols;
 
     private bool $built = false;
-    
+
     private bool $showWarnings = true;
 
     const DEFAULT_SO_SEARCH_PATHS = [
@@ -82,7 +86,6 @@ class FFIMe {
         $this->sofile = $this->findSOFile($sharedObjectFile, $soSearchPaths);
         $this->context = new Context($headerSearchPaths);
         $this->cparser = new CParser;
-        $this->compiler = new Compiler;
         $this->symbols = array_flip(ObjectParser::parseFor($this->sofile)->getAllSymbolsRecursively());
     }
 
@@ -110,7 +113,7 @@ class FFIMe {
         $this->showWarnings = $show;
         return $this;
     }
-    
+
     public function warning(string $message) {
         if ($this->showWarnings) {
             echo "[Warning] $message\n";
@@ -123,17 +126,19 @@ class FFIMe {
     }
 
     public function codeGen(string $className, string $filename): void {
-        $this->filterSymbolDeclarations();
-        $this->compile($className);
-        file_put_contents($filename, '<?php ' . $this->code[$className]);
+        $code = $this->compile($className);
+        file_put_contents($filename, '<?php ' . $code);
+    }
+
+    public function codeGenWithInstrumentation(string $className, string $filename): void {
+        $code = $this->compile($className, true);
+        file_put_contents($filename, '<?php ' . $code);
     }
 
     public function build(?string $className = null) {
         $className = $className ?? $this->getDynamicClassName();
-        $this->filterSymbolDeclarations();
-        $this->compile($className);
-        eval($this->code[$className]);
-        return new $className;
+        eval($this->compile($className));
+        return $className::ffi();
     }
 
     public function getDynamicClassName(): string {
@@ -144,16 +149,76 @@ class FFIMe {
         return $class;
     }
 
-    public function compile($className): void {
-        if (isset($this->code[$className])) {
-            return;
+    public function restrictCompiledClasses(?array $classes) {
+        if ($classes && \is_string(current($classes))) {
+            $classes = array_fill_keys($classes, 1);
         }
-        $this->numericDefines = $this->context->getNumericDefines();
-        $this->code[$className] = $this->compiler->compile($this->sofile, $this->declarationAst, $this->definitionAst, $this->skippedDeclarationAst, $this->numericDefines, $className);
+        $this->restrictedCompiledClasses = $classes;
+    }
 
-        foreach ($this->compiler->warnings as $warning) {
+    public function restrictCompiledConstants(?array $constants) {
+        if ($constants && \is_string(current($constants))) {
+            $constants = array_fill_keys($constants, 1);
+        }
+        $this->restrictedCompiledConstants = $constants;
+    }
+
+    public function restrictCompiledFunctions(?array $functions) {
+        if ($functions && \is_string(current($functions))) {
+            $functions = array_fill_keys($functions, false);
+        }
+        $this->restrictedCompiledFunctions = $functions;
+    }
+
+    private function checkTypeForClasses(string $namespace, \ReflectionType $type) {
+        if ($type instanceof \ReflectionNamedType && str_starts_with($type->getName(), $namespace)) {
+            $this->restrictedCompiledClasses[substr($type->getName(), \strlen($namespace))] = 1;
+        } else {
+            foreach ($type->getTypes() as $subtype) {
+                $this->checkTypeForClasses($namespace, $subtype);
+            }
+        }
+    }
+
+    private function checkSignaturesForClasses(string $namespace, \ReflectionFunctionAbstract $func) {
+        if ($ret = $func->getReturnType()) {
+            $this->checkTypeForClasses($namespace, $ret);
+        }
+        foreach ($func->getParameters() as $parameter) {
+            if ($type = $parameter->getType()) {
+                $this->checkTypeForClasses($namespace, $type);
+            }
+        }
+    }
+
+    public function compile($className, $instrument = false): string {
+        if (isset($this->code[$className]) && !$instrument) {
+            return $this->code[$className];
+        }
+
+        $this->filterSymbolDeclarations();
+
+        $ffiClass = "{$className}FFI";
+        if (class_exists($ffiClass, false) && isset($ffiClass::$__visitedClasses)) {
+            $this->restrictCompiledClasses($ffiClass::$__visitedClasses);
+            $this->restrictCompiledConstants($ffiClass::$__visitedConstants);
+            $this->restrictCompiledFunctions($ffiClass::$__visitedFunctions);
+        }
+
+        $compiler = new Compiler($instrument, $this->restrictedCompiledFunctions, $this->restrictedCompiledClasses, $this->restrictedCompiledConstants);
+
+        $this->numericDefines = $this->context->getNumericDefines();
+        $code = $compiler->compile($this->sofile, $this->declarationAst, $this->definitionAst, $this->skippedDeclarationAst, $this->numericDefines, $className);
+
+        foreach ($compiler->warnings as $warning) {
             $this->warning($warning);
         }
+
+        if (!$instrument) {
+            $this->code[$className] = $code;
+        }
+
+        return $code;
     }
 
     /** @param string[] $searchPaths */

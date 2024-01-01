@@ -24,7 +24,7 @@ static inline char *getUppercaseString(char *str) {
 }
 HEADER);
 
-        $testCase = new generated\BasicStrings\Defs;
+        $testCase = generated\BasicStrings\Defs::ffi();
         $str = $testCase->getUppercaseString("lower case string");
         $this->assertSame('len: 17 str: LOWER CASE STRING', $str->toString());
         $testCase->free($str);

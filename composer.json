@@ -1,11 +1,15 @@
 {
     "name": "ircmaxell/ffime",
-    "description": "Make life easy when working with 7.4's FFI",
+    "description": "Make life easy when working with FFI",
     "license": "MIT",
     "authors": [
         {
             "name": "Anthony Ferrara",
             "email": "ircmaxell@gmail.com"
+        },
+        {
+            "name": "Bob Weinand",
+            "email": "bobwei9@hotmail.com"
         }
     ],
     "require": {

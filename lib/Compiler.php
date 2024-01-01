@@ -13,6 +13,15 @@ use FFI;
 
 class Compiler {
 
+    const IS_REF = 1 << 0;
+    const IS_DATA = 1 << 1;
+    const IS_NOREF = 1 << 2;
+    const IS_STRING = 1 << 3;
+    const IS_ARRAY = 1 << 4;
+    const IS_ARRAY_STRING = 1 << 5;
+    const IS_FOREIGN_FFI = 1 << 6;
+    const ARG_IDX_SHIFT = 12;
+
     const COMPILED_PREFIX = "_ffi_internal_";
 
     private string $className;
@@ -31,6 +40,8 @@ class Compiler {
     private array $recordBitfieldSizes = [];
     /** @var int[] */
     private array $lowercaseCompiledFunctions = [];
+    /** @var string[] */
+    private array $classAliases = [];
     /** @var string[] */
     private array $functionNames = [];
     /** @var Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl[] */
@@ -57,6 +68,8 @@ class Compiler {
     /** @var string[] */
     public array $warnings = [];
 
+    public function __construct(private bool $instrument = false, private ?array $restrictedCompiledFunctions = null, private ?array $restrictedCompiledClasses = null, private ?array $restrictedCompiledConstants = null) {}
+
     /** @param Decl[] $decls
      *  @param Decl[] $definitions
      *  @param string[] $defines
@@ -66,12 +79,22 @@ class Compiler {
             unset($defines[$define]);
         }
         $this->defines = $defines;
+        foreach ($defines as $name => &$value) {
+            // remove type qualifiers
+            $value = str_replace(['u', 'l', 'U', 'L'], '', $value);
+            if (strpos($value, '.') !== false) {
+                $value = str_replace(['d', 'f', 'D', 'F'], '', $value);
+            }
+        }
+        unset($value);
+
         $this->buildResolver($decls);
         $this->buildRecordFieldTypeMap($decls);
         foreach ($nonCompiledDeclarations as $decl) {
             $this->collectNonCompiledDeclaration($decl);
         }
         $parts = explode('\\', $className);
+        $constObservers = [];
         $class = [];
         if (isset($parts[1])) {
             $className = array_pop($parts);
@@ -86,6 +109,34 @@ class Compiler {
         $classStartIndex = \count($class);
         [$typeDecls, $nonTypeDecls] = $this->splitDeclsIfType($decls);
         $class[] = "class $className {";
+        $declFuncs = [];
+        foreach ($decls as $decl) {
+            try {
+                [$declFunc, $constants] = $this->compileDecl($decl);
+                $defines += $constants;
+                array_push($declFuncs, ...$declFunc);
+            } catch (UnsupportedFeatureException $e) {
+                $this->warnings[] = "{$decl->name} could not be compiled: {$e->getMessage()}";
+            } catch (\Throwable $t) {
+                throw new \LogicException("Error occurred during compilation of {$decl->name}", 0, $t);
+            }
+        }
+        foreach ($defines as $name => $value) {
+            if ($this->restrictedCompiledConstants !== null && !isset($this->restrictedCompiledConstants[$name])) {
+                continue;
+            }
+
+            if ($this->instrument) {
+                $constObservers[($namespace ? "$namespace\\" : "") . "$className\\$name"] = "eval('namespace " . ($namespace ? "$namespace\\" : "") . "$className { class $name { const VALUE = $value; } }');";
+                $value = "$className\\$name::VALUE";
+            }
+            $class[] = "    const {$name} = {$value};";
+        }
+        $class[] = "    public static function ffi(?string \$pathToSoFile = {$className}FFI::SOFILE): {$className}FFI { return new {$className}FFI(\$pathToSoFile); }";
+        $class[] = '    public static function sizeof($classOrObject): int { return ' . $className . 'FFI::sizeof($classOrObject); }';
+        $class[] = "}";
+
+        $class[] = "class {$className}FFI {";
         $class[] = "    const SOFILE = " . var_export($soFile, true) . ';';
         $class[] = "    const TYPES_DEF = " . var_export($this->compileDeclsToCode($typeDecls), true) . ';';
         $class[] = "    const HEADER_DEF = self::TYPES_DEF . " . var_export($this->compileDeclsToCode($nonTypeDecls), true) . ';';
@@ -93,13 +144,10 @@ class Compiler {
         $class[] = "    private static FFI \$staticFFI;";
         $class[] = "    private static \WeakMap \$__arrayWeakMap;"; // ensure that cdata is not freed as long as the pointer lives
         $class[] = "    private array \$__literalStrings = [];";
-        foreach ($defines as $define => $value) {
-            // remove type qualifiers
-            $value = str_replace(['u', 'l', 'U', 'L'], '', $value);
-            if (strpos($value, '.') !== false) {
-                $value = str_replace(['d', 'f', 'D', 'F'], '', $value);
-            }
-            $class[] = "    const {$define} = {$value};";
+        if ($this->instrument) {
+            $class[] = "    public static \$__visitedClasses = [];";
+            $class[] = "    public static \$__visitedFunctions = [];";
+            $class[] = "    public static \$__visitedConstants = [];";
         }
         array_push($class, ...$this->compileConstructor($definitions));
         $class[] = $this->compileMethods();
@@ -128,15 +176,7 @@ class Compiler {
         $class[] = '    public function __allocCachedString(string $str): FFI\CData {';
         $class[] = '        return $this->__literalStrings[$str] ??= string_::ownedZero($str)->getData();';
         $class[] = '    }';
-        foreach ($decls as $decl) {
-            try {
-                array_push($class, ...$this->compileDecl($decl));
-            } catch (UnsupportedFeatureException $e) {
-                $this->warnings[] = "{$decl->name} could not be compiled: {$e->getMessage()}";
-            } catch (\Throwable $t) {
-                throw new \LogicException("Error occurred during compilation of {$decl->name}", 0, $t);
-            }
-        }
+        array_push($class, ...$declFuncs);
         foreach ($definitions as $def) {
             try {
                 array_push($class, ...$this->compileDef($def));
@@ -152,7 +192,6 @@ class Compiler {
             array_push($class, ...BuiltinFunction::$registry[$function]->print());
         }
         $class[] = "}";
-        $class[] = "(function() { self::\$staticFFI = \FFI::cdef($className::TYPES_DEF); self::\$__arrayWeakMap = new \WeakMap; })->bindTo(null, $className::class)();";
         $class[] = "";
 
         $publicProperties = ["/**"];
@@ -165,10 +204,10 @@ class Compiler {
         }
 
         // we need to compile this early because of the side effects on usedBuiltinTypes
-        $declClasses = [];
+        $this->classAliases = [];
         foreach ($decls as $decl) {
             try {
-                array_push($declClasses, ...$this->compileDeclClass($decl));
+                $this->classAliases += $this->compileDeclClass($decl);
             } catch (UnsupportedFeatureException $e) {
                 $this->warnings[] = "{$decl->name} could not be compiled: {$e->getMessage()}";
             }
@@ -202,6 +241,7 @@ class Compiler {
             }
         }
         $nativeTypeGroupings = array_merge(array_values($this->groupNativeTypesOfSameSize(self::INT_TYPES)), array_values($this->groupNativeTypesOfSameSize(self::FLOAT_TYPES)));
+        $nativeClassAliases = [];
         foreach ($nativeTypeGroupings as $nativeTypeGroup) {
             $firstNativeTypeMatch = null;
             foreach ($nativeTypeGroup as $nativeType) {
@@ -209,7 +249,7 @@ class Compiler {
                     $nativeType = strtr($nativeType, " ", "_");
                     if ($firstNativeTypeMatch) {
                         for ($i = 1; $i <= 4; ++$i) {
-                            $class[] = '\class_alias(' . $firstNativeTypeMatch . str_repeat('_ptr', $i) . '::class, ' . $nativeType . str_repeat('_ptr', $i) . '::class);';
+                            $nativeClassAliases[$nativeType . str_repeat('_ptr', $i)] = $firstNativeTypeMatch . str_repeat('_ptr', $i);
                         }
                     } else {
                         $firstNativeTypeMatch = $nativeType;
@@ -220,7 +260,24 @@ class Compiler {
                 }
             }
         }
-        array_push($class, ...$declClasses);
+        $class[] = "(function() { self::\$staticFFI = \FFI::cdef({$className}FFI::TYPES_DEF); self::\$__arrayWeakMap = new \WeakMap; })->bindTo(null, {$className}FFI::class)();";
+        if ($this->instrument) {
+            $class[] = 'spl_autoload_register(function($class) {';
+            $class[] = '    switch ($class) {';
+            foreach ($constObservers as $name => $definition) {
+                $class[] = "        case '$name':";
+                $class[] = "            {$className}FFI::\$__visitedConstants['" . substr($name, strrpos($name, "\\") + 1) . "'] = true;";
+                $class[] = "            $definition";
+                $class[] = "            break;";
+            }
+            $class[] = '    }';
+            $class[] = '});';
+        }
+        foreach ($nativeClassAliases + $this->classAliases as $alias => $name) {
+            if ($this->restrictedCompiledClasses === null || isset($this->restrictedCompiledClasses[$name])) {
+                $class[] = '\class_alias(' . $name . '::class, ' . $alias . '::class);';
+            }
+        }
         return implode("\n", $class);
     }
 
@@ -341,6 +398,35 @@ class Compiler {
     public function compileDeclsToCode(array $decls): string {
         // TODO
         $printer = new Printer\C;
+        if ($this->restrictedCompiledFunctions !== null || $this->restrictedCompiledConstants !== null) {
+            foreach ($decls as $idx => $decl) {
+                if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl && $this->restrictedCompiledFunctions !== null) {
+                    if ($this->restrictedCompiledFunctions !== null && !isset($this->restrictedCompiledFunctions[$decl->name])) {
+                        unset($decls[$idx]);
+                    }
+                } elseif ($this->restrictedCompiledConstants !== null) {
+                    if ($decl instanceof Decl\NamedDecl\TypeDecl\TagDecl\EnumDecl) {
+                        enum_decl:
+                        if ($decl->fields !== null) {
+                            foreach ($decl->fields as $field) {
+                                if (isset($this->defines[$field->name])) {
+                                    continue;
+                                }
+                                if (isset($this->restrictedCompiledConstants[$field->name])) {
+                                    goto print_enum;
+                                }
+                            }
+                            unset($decls[$idx]);
+                            print_enum:
+                        }
+                    } elseif ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl && $decl->type instanceof Type\TagType\EnumType) {
+                        $decl = $decl->type->decl;
+                        goto enum_decl;
+                    }
+                }
+            }
+        }
+
         $defs = $printer->printNodes($decls, 0);
         // hack to make _Complex disappear (it's just definitions)
         // there probably should be a recursive cleanup of everything _Complex ...
@@ -359,6 +445,9 @@ class Compiler {
 
         $return = [];
         if ($def instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
+            if ($this->restrictedCompiledFunctions !== null && !isset($this->restrictedCompiledClasses[$def->name])) {
+                return [];
+            }
             try {
                 [$return, $functionType, $preReturnStmts] = $this->compileFunctionStart($def);
                 $this->knownCompiledFunctions[$def->name] = $functionType;
@@ -765,13 +854,13 @@ class Compiler {
         }
     }
 
-    /** @return string[] */
+    /** @return [string[], string[]] */
     public function compileDecl(Decl $declaration): array {
-        $return = [];
+        $constants = $return = [];
         if ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl) {
             // C allows for repeated identical declarations with the same name
-            if (isset($this->knownFunctions[$declaration->name])) {
-                return [];
+            if (isset($this->knownFunctions[$declaration->name]) || ($this->restrictedCompiledFunctions !== null && !isset($this->restrictedCompiledFunctions[$declaration->name]))) {
+                return [[], []];
             }
 
             [$return, $functionType, $preReturnStmts] = $this->compileFunctionStart($declaration);
@@ -796,7 +885,7 @@ class Compiler {
             $return[] = "    }";
         } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TagDecl\EnumDecl) {
             if ($declaration->name !== null) {
-                $return[] = "    // enum {$declaration->name}";
+                $location = " /* enum {$declaration->name} */";
             }
             enum_decl:
             if ($declaration->fields !== null) {
@@ -813,21 +902,21 @@ class Compiler {
                         $id = 0;
                     }
                     // Add, since lastValue may be an expression...
-                    $return[] = "    const {$field->name} = ($lastValue) + $id;";
+                    $constants[$field->name] = "($lastValue) + $id$location";
                     $id++;
                 }
             }
         } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl && $declaration->type instanceof Type\TagType\EnumType) {
-            $return[] = "    // typedefenum {$declaration->name}";
+            $location = " /* typedefenum {$declaration->name} */";
             $declaration = $declaration->type->decl;
             goto enum_decl;
         } elseif ($declaration instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
             $this->globalVariableTypes[$declaration->name] = $this->compileType($declaration->type);
         }
         if (str_starts_with($declaration->name ?? "", '__')) {
-            return [];
+            return [[], []];
         }
-        return $return;
+        return [$return, $constants];
     }
 
     /** @return array{string[], CompiledFunctionType, string[]} */
@@ -839,6 +928,7 @@ class Compiler {
         } else {
             $this->lowercaseCompiledFunctions[$lcname] = 1;
         }
+        $argRestrictions = null;
         $this->knownFunctions[$decl->name] = $decl;
         $this->functionNames[$decl->name] = $functionName;
         $preReturnStmts = [];
@@ -849,26 +939,40 @@ class Compiler {
         $functionType = $this->compileType($functionType);
         /** @var CompiledFunctionType $functionType */
         $returnType = $functionType->return;
-        $nullableReturnType = ((($returnType->value === 'void' && $returnType->indirections() === 0) || $returnType->isNative ? '' : '?') . $this->toPHPType($returnType));
+        $phpReturnType = $this->toPHPType($returnType);
+        $nullableReturnType = (($returnType->value === 'void' && $returnType->indirections() === 0) || $returnType->isNative ? '' : '?') . ($this->classAliases[$phpReturnType] ?? $phpReturnType);
         $paramSignature = [];
         foreach ($functionType->args as $idx => $param) {
             $varname = $functionType->argNames[$idx] ?: "_$idx";
             $phpParam = $this->toPHPType($param);
-            $paramSignature[] = ($phpParam !== 'void_ptr' ? ($param->indirections() > 0 ? "void_ptr | " : "") . $phpParam : "i{$this->className}_ptr") . ($param->isNative ? '' : ' | null') . ($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr' ? ' | string' : '') . ($param->indirections() >= 1 ? ' | array' : '') . ' $' . $varname;
+            $paramSignature[] = ($phpParam !== 'void_ptr' ? ($param->indirections() > 0 ? "void_ptr | " : "") . ($this->classAliases[$phpParam] ?? $phpParam) : "i{$this->className}_ptr") . ($param->isNative ? '' : ' | null') . ($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr' ? ' | string' : '') . ($param->indirections() >= 1 ? ' | array' : '') . ' $' . $varname;
         }
         $return[] = "    public function $functionName(" . implode(', ', $paramSignature) . "): " . $nullableReturnType . " {";
+        if ($this->instrument) {
+            $return[] = '        $__ffi_internal_visited = [];';
+        }
+        $argRestrictions = null;
         foreach ($functionType->args as $idx => $param) {
+            if (isset($this->restrictedCompiledFunctions[$functionName]) && \is_array($this->restrictedCompiledFunctions[$functionName])) {
+                $argRestrictions[$idx] = 0;
+                foreach ($this->restrictedCompiledFunctions[$functionName] as $invocationFlags) {
+                    $argRestrictions[$idx] |= $invocationFlags[$idx] ?? 0;
+                }
+            }
+
+            $argIdx = $idx << self::ARG_IDX_SHIFT;
             $varname = $functionType->argNames[$idx] ?: "_$idx";
             $phpParam = $this->toPHPType($param);
             $hasIf = false;
             if ($param->indirections() >= 1) {
-                $return[] = '        $__ffi_internal_refs' . $varname . ' = [];';
+                $return[] = ['        $__ffi_internal_refs' . $varname . ' = [];', $argIdx | self::IS_REF];
             }
-            if ($phpParam === 'string_ptr') {
-                $return[] = '        $strings = [];';
-            }
-            if ($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr') {
+            if (($phpParam === 'string_' || $phpParam === 'uint8_t_ptr' || $phpParam === 'unsigned_char_ptr') && ($argRestrictions === null || (($argRestrictions[$idx] ?? 0) & self::IS_STRING))) {
                 $return[] = '        if (\is_string($' . $varname . ')) {';
+                if ($this->instrument) {
+                    $return[] = '            $__ffi_internal_visited[' . $idx . '] = ' . self::IS_STRING . ';';
+                }
+
                 if ($phpParam === 'uint8_t_ptr') {
                     $return[] = '            $__ffi_str_' . $varname . ' = string_::ownedZero($' . $varname . ')->getData();';
                     $return[] = '            $' . $varname . ' = $this->ffi->cast("uint8_t*", \FFI::addr($__ffi_str_' . $varname . '));';
@@ -877,48 +981,103 @@ class Compiler {
                 }
                 $hasIf = true;
             }
-            if ($param->indirections() >= 1) {
+            if ($param->indirections() >= 1 && ($argRestrictions === null || (($argRestrictions[$idx] ?? 0) & self::IS_ARRAY))) {
                 $return[] = '        ' . ($hasIf ? '} else' : '') . 'if (\is_array($' . $varname . ')) {';
                 $return[] = '            $_ = $this->ffi->new("' . $param->rawValue . str_repeat("*", $param->indirections() - 1) . '[" . \count($' . $varname . ') . "]");';
                 $return[] = '            $_i = 0;';
                 $return[] = '            if ($' . $varname . ') {';
-                $return[] = '                if ($_ref = \ReflectionReference::fromArrayElement($' . $varname . ', $_k = \key($' . $varname . '))) {'; // if the first value is ref, assume all ref
-                $return[] = '                    foreach ($' . $varname . ' as $_k => $_v) {';
-                $return[] = '                        $__ffi_internal_refs' . $varname . '[$_i] = &$' . $varname . '[$_k];';
-                $return[] = '                        $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '?->getData()') . ';';
-                $return[] = '                    }';
-                $return[] = '                } else {';
-                $return[] = '                    foreach ($' . $varname . ' as $_k => $_v) {';
-                if ($phpParam === 'string_ptr') {
-                    $return[] = '                        if (\is_string($_v)) {';
-                    $return[] = '                            $_[$_i++] = ($strings[] = string_::ownedZero($_v))->addr()->getData()[0];';
-                    $return[] = '                            continue;';
-                    $return[] = '                        }';
+                $return[] = ['                if ($_ref = \ReflectionReference::fromArrayElement($' . $varname . ', \key($' . $varname . '))) {', $argIdx | self::IS_REF | self::IS_NOREF]; // if the first value is ref, assume all ref
+                if ($this->instrument) {
+                    $return[] = '                    $__ffi_internal_visited[' . $idx . '] = ' . self::IS_REF . ';';
                 }
-                $return[] = '                        $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '?->getData()') . ';';
-                $return[] = '                    }';
-                $return[] = '                }';
+                $return[] = ['                    foreach ($' . $varname . ' as $_k => $_v) {', $argIdx | self::IS_REF];
+                $return[] = ['                        $__ffi_internal_refs' . $varname . '[$_i] = &$' . $varname . '[$_k];', $argIdx | self::IS_REF];
+                if ($param->indirections() === 1) {
+                    $return[] = ['                        if ($_v !== null) {', $argIdx | self::IS_REF];
+                    $return[] = ['                            $_[$_i++] = $_v' . ($param->baseTypeIsNative() ? '' : '->getData()') . ';', $argIdx | self::IS_REF];
+                    $return[] = ['                        }', $argIdx | self::IS_REF];
+                } else {
+                    $return[] = ['                        $_[$_i++] = $_v?->getData();', $argIdx | self::IS_REF];
+                }
+                $return[] = ['                    }', $argIdx | self::IS_REF];
+                $return[] = ['                    $__ffi_internal_original' . $varname . ' = $' . $varname . ' = $_;', $argIdx | self::IS_REF];
+                $return[] = ['                } else {', $argIdx | self::IS_REF | self::IS_NOREF];
+                if ($this->instrument) {
+                    $return[] = '                    $__ffi_internal_visited[' . $idx . '] = ' . self::IS_NOREF . ';';
+                }
+                $return[] = ['                    foreach ($' . $varname . ' as $_v) {', $argIdx | self::IS_NOREF];
+                if ($phpParam === 'string_ptr') {
+                    $return[] = ['                        if (\is_string($_v)) {', $argIdx | self::IS_ARRAY_STRING];
+                    if ($this->instrument) {
+                        $return[] = '                            $__ffi_internal_visited[' . $idx . '] |= ' . self::IS_ARRAY_STRING . ';';
+                    }
+                    $return[] = ['                            $_[$_i++] = ($__ffi_internal_strings[] = string_::ownedZero($_v))->addr()->getData()[0];', $argIdx | self::IS_ARRAY_STRING];
+                    $return[] = ['                            continue;', $argIdx | self::IS_ARRAY_STRING];
+                    $return[] = ['                        }', $argIdx | self::IS_ARRAY_STRING];
+                }
+                $return[] = ['                        $_[$_i++] = $_v' . ($param->indirections() === 1 && $param->baseTypeIsNative() ? ' ?? 0' : '?->getData()') . ';', $argIdx | self::IS_NOREF];
+                $return[] = ['                    }', $argIdx | self::IS_NOREF];
+                $return[] = ['                    $' . $varname . ' = $_;', $argIdx | self::IS_NOREF];
+                $return[] = ['                }', $argIdx | self::IS_REF | self::IS_NOREF];
                 $return[] = '            }';
-                $return[] = '            $__ffi_internal_original' . $varname . ' = $' . $varname . ' = $_;';
+                if ($this->instrument) {
+                    $return[] = '                    $__ffi_internal_visited[' . $idx . '] |= ' . self::IS_ARRAY . ';';
+                }
 
-                $preReturnStmts[] = '        foreach ($__ffi_internal_refs' . $varname . ' as $_k => &$__ffi_internal_ref_v) {';
-                $preReturnStmts[] = '            $__ffi_internal_ref_v = $__ffi_internal_original' . $varname . '[$_k];';
-                $preReturnStmts[] = '        }';
+                $preReturnStmts[] = ['        foreach ($__ffi_internal_refs' . $varname . ' as $_k => &$__ffi_internal_ref_v) {', $argIdx | self::IS_REF];
+                if ($param->baseTypeIsNative() || $param->indirections() > 1) {
+                    $preReturnStmts[] = ['            $__ffi_internal_ref_v = $__ffi_internal_original' . $varname . '[$_k];', $argIdx | self::IS_REF];
+                } else {
+                    $preReturnStmts[] = ['            $__ffi_internal_ref_v = $this->ffi->new("' . $param->rawValue . '");', $argIdx | self::IS_REF];
+                    $preReturnStmts[] = ['            \FFI::addr($__ffi_internal_ref_v)[0] = $__ffi_internal_original' . $varname . '[$_k];', $argIdx | self::IS_REF];
+                }
+                if (!$param->baseTypeIsNative() || $param->indirections() > 1) {
+                    $refParam = clone $param;
+                    array_pop($refParam->indirections);
+                    $preReturnStmts[] = ['            if ($__ffi_internal_ref_v !== null) {', $argIdx | self::IS_REF];
+                    $preReturnStmts[] = ['                $__ffi_internal_ref_v = new ' . $this->toPHPType($refParam) . '($__ffi_internal_ref_v' . ($refParam instanceof CompiledFunctionType ? ', ' . $this->linearArrayExport($this->compilePHPFunctionTypeArray($refParam)) : '') . ');', $argIdx | self::IS_REF];
+                    $preReturnStmts[] = ['            }', $argIdx | self::IS_REF];
+                } elseif ($param->rawValue === 'char') {
+                    $preReturnStmts[] = ['                $__ffi_internal_ref_v = \ord($__ffi_internal_ref_v);', $argIdx | self::IS_REF];
+                }
+                $preReturnStmts[] = ['        }', $argIdx | self::IS_REF];
                 $hasIf = true;
             }
-            if (!$param->isNative) {
+            if (!$param->isNative && ($argRestrictions === null || (($argRestrictions[$idx] ?? 0)& self::IS_DATA))) {
                 if ($hasIf) {
                     $return[] = '        } else {';
                 }
-                $return[] = ($hasIf ? '    ' : '') . '        $' . $varname . ' = $' . $varname . '?->getData();';
+                if ($this->instrument) {
+                    $return[] = ($hasIf ? '    ' : '') . '        $__ffi_internal_visited[' . $idx . '] = ' . self::IS_DATA . ';';
+                }
+                $return[] = [($hasIf ? '    ' : '') . '        $' . $varname . ' = $' . $varname . '?->getData();', $argIdx | self::IS_DATA];
                 if ($param->indirections() >= 1) {
-                    $return[] = ($hasIf ? '    ' : '') . '        if ($' . $varname . ' !== null) {';
-                    $return[] = ($hasIf ? '    ' : '') . '            $' . $varname . ' = $this->ffi->cast("' . $param->toValue() . '", $' . $varname . ');';
-                    $return[] = ($hasIf ? '    ' : '') . '        }';
+                    $return[] = [($hasIf ? '    ' : '') . '        if ($' . $varname . ' !== null) {', $argIdx | self::IS_FOREIGN_FFI];
+                    if ($this->instrument) {
+                        $return[] = ($hasIf ? '    ' : '') . '            if (FFI::typeof($' . $varname . ') != $this->ffi->type("' . $param->toValue() . '")) { $__ffi_internal_visited[' . $idx . '] |= ' . self::IS_FOREIGN_FFI . '; }';
+                    }
+                    $return[] = [($hasIf ? '    ' : '') . '            $' . $varname . ' = $this->ffi->cast("' . $param->toValue() . '", $' . $varname . ');', $argIdx | self::IS_FOREIGN_FFI];
+                    $return[] = [($hasIf ? '    ' : '') . '        }', $argIdx | self::IS_FOREIGN_FFI];
                 }
             }
             if ($hasIf) {
                 $return[] = '        }';
+            }
+        }
+        if ($this->instrument) {
+            $return[] = '        self::$__visitedFunctions[__FUNCTION__][] = $__ffi_internal_visited;';
+        }
+        foreach ([&$preReturnStmts, &$return] as &$lines) {
+            foreach ($lines as $key => &$line) {
+                if (\is_array($line)) {
+                    $check = $line[1] & ((1 << self::ARG_IDX_SHIFT) - 1);
+                    $arg = $line[1] >> self::ARG_IDX_SHIFT;
+                    if ($argRestrictions === null || (($argRestrictions[$arg] ?? 0) & $check) === $check) {
+                        $line = $line[0];
+                    } else {
+                        unset($lines[$key]);
+                    }
+                }
             }
         }
         return [$return, $functionType, $preReturnStmts];
@@ -1088,25 +1247,25 @@ class Compiler {
             $left = $this->compileExpr($expr->left, isAssign: $expr->kind === Expr\BinaryOperator::KIND_ASSIGN);
             $right = $this->compileExpr($expr->right);
             $opChar = [
-                    Expr\BinaryOperator::KIND_ADD => '+',
-                    Expr\BinaryOperator::KIND_SUB => '-',
-                    Expr\BinaryOperator::KIND_MUL => '*',
-                    Expr\BinaryOperator::KIND_DIV => '/',
-                    Expr\BinaryOperator::KIND_REM => '%',
-                    Expr\BinaryOperator::KIND_SHL => '<<',
-                    Expr\BinaryOperator::KIND_SHR => '>>',
-                    Expr\BinaryOperator::KIND_LT => '<',
-                    Expr\BinaryOperator::KIND_GT => '>',
-                    Expr\BinaryOperator::KIND_LE => '<=',
-                    Expr\BinaryOperator::KIND_GE => '>=',
-                    Expr\BinaryOperator::KIND_EQ => '==',
-                    Expr\BinaryOperator::KIND_NE => '!=',
-                    Expr\BinaryOperator::KIND_BITWISE_AND => '&',
-                    Expr\BinaryOperator::KIND_BITWISE_OR => '|',
-                    Expr\BinaryOperator::KIND_BITWISE_XOR => '^',
-                    Expr\BinaryOperator::KIND_LOGICAL_AND => '&&',
-                    Expr\BinaryOperator::KIND_LOGICAL_OR => '||',
-                ][$expr->kind & ~Expr\BinaryOperator::KIND_ASSIGN] ?? '';
+                Expr\BinaryOperator::KIND_ADD => '+',
+                Expr\BinaryOperator::KIND_SUB => '-',
+                Expr\BinaryOperator::KIND_MUL => '*',
+                Expr\BinaryOperator::KIND_DIV => '/',
+                Expr\BinaryOperator::KIND_REM => '%',
+                Expr\BinaryOperator::KIND_SHL => '<<',
+                Expr\BinaryOperator::KIND_SHR => '>>',
+                Expr\BinaryOperator::KIND_LT => '<',
+                Expr\BinaryOperator::KIND_GT => '>',
+                Expr\BinaryOperator::KIND_LE => '<=',
+                Expr\BinaryOperator::KIND_GE => '>=',
+                Expr\BinaryOperator::KIND_EQ => '==',
+                Expr\BinaryOperator::KIND_NE => '!=',
+                Expr\BinaryOperator::KIND_BITWISE_AND => '&',
+                Expr\BinaryOperator::KIND_BITWISE_OR => '|',
+                Expr\BinaryOperator::KIND_BITWISE_XOR => '^',
+                Expr\BinaryOperator::KIND_LOGICAL_AND => '&&',
+                Expr\BinaryOperator::KIND_LOGICAL_OR => '||',
+            ][$expr->kind & ~Expr\BinaryOperator::KIND_ASSIGN] ?? '';
             switch ($expr->kind) {
                 case Expr\BinaryOperator::KIND_ADD:
                     if ($left->type->indirections()) {
@@ -1418,7 +1577,7 @@ class Compiler {
 
     /** @return string[] */
     public function compileDeclClass(Decl $decl): array {
-        $returns = [];
+        $aliases = [];
         if ($decl instanceof Decl\NamedDecl\TypeDecl\TypedefNameDecl\TypedefDecl) {
             if ($decl->type instanceof Type\TagType\EnumType || ($decl->type instanceof Type\TagType\RecordType && $decl->type->decl->name === null)) {
                 // don't compile enums or typedef'ed unnamed structs
@@ -1432,10 +1591,10 @@ class Compiler {
             $baseIndirections = $baseType->indirections() + ($this->baseTypeIndirections[$baseType->value] ?? 0);
             $this->baseTypeIndirections[$decl->name] = $baseIndirections;
             for ($i = $baseIndirections === 0 && ($phpType === 'void' || $baseType instanceof CompiledFunctionType) ? 1 : 0; $i <= 4 - $baseIndirections; $i++) {
-                $returns[] = '\class_alias(' . ($phpType === 'string_' && $i > 0 ? 'string' : $phpType) . str_repeat('_ptr', $i) . '::class, ' . $decl->name . str_repeat('_ptr', $i + ($baseType->isNative ? 1 : 0)) . '::class);';
+                $aliases[$decl->name . str_repeat('_ptr', $i + ($baseType->isNative ? 1 : 0))] = ($phpType === 'string_' && $i > 0 ? 'string' : $phpType) . str_repeat('_ptr', $i);
             }
         }
-        return $returns;
+        return $aliases;
     }
 
     public function compilePHPFunctionTypeArray(CompiledFunctionType $type): array {
@@ -1469,9 +1628,13 @@ class Compiler {
 
     /** @return string[] */
     protected function compileDeclClassImpl(string $name, CompiledType $type): array {
+        if ($this->restrictedCompiledClasses !== null && !isset($this->restrictedCompiledClasses[$name])) {
+            return [];
+        }
+
         if ($type instanceof CompiledFunctionType) {
             $return[] = "class {$name} extends function_type" . str_repeat("_ptr", $type->indirections()) ." {";
-            $return[] = '    public function __construct(FFI\CData $data) { parent::__construct($data, ' . $this->linearArrayExport($this->compilePHPFunctionTypeArray($type)) . '); }';
+            $return[] = '    public function __construct(FFI\CData $data) { ' . ($this->instrument ? $this->className . 'FFI::$__visitedClasses["' . $name . '"] = true; ' : '') . 'parent::__construct($data, ' . $this->linearArrayExport($this->compilePHPFunctionTypeArray($type)) . '); }';
             $return[] = '    public static function getType(): string { return ' . var_export($type->toValue(), true) . '; }';
             $return[] = '}';
             return $return;
@@ -1483,14 +1646,15 @@ class Compiler {
         if ($recordType && $record = $this->records[$type->value] ?? null) {
             $return[] = '/**';
             foreach ($record as $field => $fieldType) {
-                $return[] = ' * @property ' . $this->toPHPType($fieldType) . ' $' . $field;
+                $phpFieldType = $this->toPHPType($fieldType);
+                $return[] = ' * @property ' . ($this->classAliases[$phpFieldType] ?? $phpFieldType) . ' $' . $field;
             }
             $return[] = ' */';
         }
         $return[] = "class {$name} implements i{$this->className}" . ($type->indirections() ? ", i{$this->className}_ptr" : "") . ($dereferencable ? ", \ArrayAccess" : "") . " {";
         $return[] = '    private FFI\CData $data;';
-        $return[] = '    public function __construct(FFI\CData $data) { $this->data = $data; }';
-        $return[] = '    public static function castFrom(i' . $this->className . ' $data): self { return ' . $this->className . '::cast($data, self::class); }';
+        $return[] = '    public function __construct(FFI\CData $data) { ' . ($this->instrument ? $this->className . 'FFI::$__visitedClasses["' . $name . '"] = true; ' : '') . '$this->data = $data; }';
+        $return[] = '    public static function castFrom(i' . $this->className . ' $data): self { return ' . $this->className . 'FFI::cast($data, self::class); }';
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
         $return[] = '    public function equals(' . $name . ' $other): bool { return $this->data == $other->data; }';
         $nameWithPtr = $name . '_ptr';
@@ -1523,7 +1687,7 @@ class Compiler {
             $return[] = '    #[\ReturnTypeWillChange] public function offsetExists($offset): bool { return !FFI::isNull($this->data); }';
             $return[] = '    #[\ReturnTypeWillChange] public function offsetUnset($offset): void { throw new \Error("Cannot unset C structures"); }';
             $return[] = '    #[\ReturnTypeWillChange] public function offsetSet($offset, $value): void { $this->data[$offset] = ' . ($type->indirections() === 1 && $type->baseTypeIsNative() ? $type->rawValue === 'char' ? '\chr($value)' : '$value' : '$value->getData()') . '; }';
-            $return[] = '    public static function array(int $size = 1): self { return ' . $this->className . '::makeArray(self::class, $size); }';
+            $return[] = '    public static function array(int $size = 1): self { return ' . $this->className . 'FFI::makeArray(self::class, $size); }';
             if ($type->indirections() > 1) {
                 $return[] = '    /** @return ' . $prior . '[] */ public function toArray(?int $length = null): array { $ret = []; if ($length === null) { $i = 0; while (null !== $cur = $this->data[$i++]) { $ret[] = new ' . $prior . '($cur); } } else { for ($i = 0; $i < $length; ++$i) { $ret[] = new ' . $prior . '($this->data[$i]); } } return $ret; }';
             } elseif ($type->rawValue === "char") {
@@ -1580,7 +1744,7 @@ class Compiler {
         }
         $return[] = '    }';
         $return[] = '    public static function getType(): string { return ' . var_export($type->toValue(), true) . '; }';
-        $return[] = '    public static function size(): int { return ' . $this->className . '::sizeof(self::class); }';
+        $return[] = '    public static function size(): int { return ' . $this->className . 'FFI::sizeof(self::class); }';
         $return[] = '    public function getDefinition(): string { return static::getType(); }';
         $return[] = '}';
         return $return;
@@ -1590,11 +1754,15 @@ class Compiler {
     protected function compileFunctionPtrClassImpl(int $indirections): array {
         $name = "function_type" . str_repeat("_ptr", $indirections);
 
+        if ($this->restrictedCompiledClasses !== null && !isset($this->restrictedCompiledClasses[$name])) {
+            return [];
+        }
+
         // function type: [null_or_return_class_name, arg1_class_name, arg2_class_name] - nested function types represented as nested array: ["function_type_ptr(_ptr)*", arg1_class_name, arg2_class_name]
         $return[] = "class $name implements i{$this->className}, i{$this->className}_ptr" . ($indirections > 1 ? ', \ArrayAccess' : "") . " {";
         $return[] = '    private FFI\CData $data;';
         $return[] = '    private array $types;';
-        $return[] = '    public function __construct(FFI\CData $data, array $types) { $this->data = $data; $this->types = $types; }';
+        $return[] = '    public function __construct(FFI\CData $data, array $types) { ' . ($this->instrument ? $this->className . 'FFI::$__visitedClasses["' . $name . '"] = true; ' : '') . '$this->data = $data; $this->types = $types; }';
         $return[] = '    public function getData(): FFI\CData { return $this->data; }';
         $return[] = '    public function equals(' . $name . ' $other): bool { return $this->data == $other->data; }';
         $return[] = '    public function addr(): ' . $name . '_ptr { return new '. $name . '_ptr(FFI::addr($this->data)); }';
