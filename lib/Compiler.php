@@ -884,9 +884,7 @@ class Compiler {
             }
             $return[] = "    }";
         } elseif ($declaration instanceof Decl\NamedDecl\TypeDecl\TagDecl\EnumDecl) {
-            if ($declaration->name !== null) {
-                $location = " /* enum {$declaration->name} */";
-            }
+            $location = $declaration->name !== null ? " /* enum {$declaration->name} */" : "";
             enum_decl:
             if ($declaration->fields !== null) {
                 $id = 0;
