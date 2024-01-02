@@ -63,6 +63,7 @@ class FFIMe {
     private ?array $restrictedCompiledClasses = null;
     private ?array $restrictedCompiledFunctions = null;
     private ?array $restrictedCompiledConstants = null;
+    private ?array $restrictedCompiledGlobals = null;
 
     private Context $context;
     private CParser $cparser;
@@ -163,6 +164,13 @@ class FFIMe {
         $this->restrictedCompiledConstants = $constants;
     }
 
+    public function restrictCompiledGlobals(?array $globals) {
+        if ($globals && \is_string(current($globals))) {
+            $globals = array_fill_keys($globals, 1);
+        }
+        $this->restrictedCompiledGlobals = $globals;
+    }
+
     public function restrictCompiledFunctions(?array $functions) {
         if ($functions && \is_string(current($functions))) {
             $functions = array_fill_keys($functions, false);
@@ -203,9 +211,10 @@ class FFIMe {
             $this->restrictCompiledClasses($ffiClass::$__visitedClasses);
             $this->restrictCompiledConstants($ffiClass::$__visitedConstants);
             $this->restrictCompiledFunctions($ffiClass::$__visitedFunctions);
+            $this->restrictCompiledGlobals($ffiClass::$__visitedGlobals);
         }
 
-        $compiler = new Compiler($instrument, $this->restrictedCompiledFunctions, $this->restrictedCompiledClasses, $this->restrictedCompiledConstants);
+        $compiler = new Compiler($instrument, $this->restrictedCompiledFunctions, $this->restrictedCompiledClasses, $this->restrictedCompiledConstants, $this->restrictedCompiledGlobals);
 
         $this->numericDefines = $this->context->getNumericDefines();
         $code = $compiler->compile($this->sofile, $this->declarationAst, $this->definitionAst, $this->skippedDeclarationAst, $this->numericDefines, $className);

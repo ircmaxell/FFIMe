@@ -68,7 +68,7 @@ class Compiler {
     /** @var string[] */
     public array $warnings = [];
 
-    public function __construct(private bool $instrument = false, private ?array $restrictedCompiledFunctions = null, private ?array $restrictedCompiledClasses = null, private ?array $restrictedCompiledConstants = null) {}
+    public function __construct(private bool $instrument = false, private ?array $restrictedCompiledFunctions = null, private ?array $restrictedCompiledClasses = null, private ?array $restrictedCompiledConstants = null, private ?array $restrictedCompiledGlobals = null) {}
 
     /** @param Decl[] $decls
      *  @param Decl[] $definitions
@@ -148,6 +148,7 @@ class Compiler {
             $class[] = "    public static \$__visitedClasses = [];";
             $class[] = "    public static \$__visitedFunctions = [];";
             $class[] = "    public static \$__visitedConstants = [];";
+            $class[] = "    public static \$__visitedGlobals = [];";
         }
         array_push($class, ...$this->compileConstructor($definitions));
         $class[] = $this->compileMethods();
@@ -196,7 +197,9 @@ class Compiler {
 
         $publicProperties = ["/**"];
         foreach ($this->globalVariableTypes as $var => $type) {
-            $publicProperties[] = " * @property " . $this->toPHPType($type) . ' $' . $var;
+            if ($this->restrictedCompiledGlobals === null || isset($this->restrictedCompiledGlobals[$var])) {
+                $publicProperties[] = " * @property " . $this->toPHPType($type) . ' $' . $var;
+            }
         }
         if (\count($publicProperties) > 1) {
             $publicProperties[] = " */";
@@ -288,7 +291,9 @@ class Compiler {
         $results = [];
         foreach ($decls as $decl) {
             if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
-                $results[] = $this->compileCase($decl, "ffi->", $isSetter);
+                if ($case = $this->compileCase($decl, "ffi->", $isSetter)) {
+                    $results[] = $case;
+                }
             }
         }
         return $results;
@@ -301,15 +306,24 @@ class Compiler {
         $results = [];
         foreach ($decls as $decl) {
             if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
-                $results[] = $this->compileCase($decl, "", $isSetter);
+                if ($case = $this->compileCase($decl, "", $isSetter)) {
+                    $results[] = $case;
+                }
             }
         }
         return $results;
     }
 
     private function compileCase(Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl $decl, string $ffiAccess, bool $isSetter): string {
+        if ($this->restrictedCompiledGlobals !== null && isset($this->restrictedCompiledGlobals[$decl->name])) {
+            return "";
+        }
+
         $return = $this->compileType($decl->type);
         $line = "case " . var_export($decl->name, true) . ": ";
+        if ($this->instrument) {
+            $line .= 'self::$__visitedGlobals[' . var_export($decl->name, true) . '] = true; ';
+        }
         if ($return->isNative) {
             if ($isSetter) {
                 $line .= "\$this->$ffiAccess{$decl->name} = " . ($return->rawValue === 'char' ? '\chr($value)' : '$value') . "; break;";
@@ -402,6 +416,10 @@ class Compiler {
             foreach ($decls as $idx => $decl) {
                 if ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\FunctionDecl && $this->restrictedCompiledFunctions !== null) {
                     if ($this->restrictedCompiledFunctions !== null && !isset($this->restrictedCompiledFunctions[$decl->name])) {
+                        unset($decls[$idx]);
+                    }
+                } elseif ($decl instanceof Decl\NamedDecl\ValueDecl\DeclaratorDecl\VarDecl) {
+                    if ($this->restrictedCompiledGlobals !== null && !isset($this->restrictedCompiledGlobals[$decl->name])) {
                         unset($decls[$idx]);
                     }
                 } elseif ($this->restrictedCompiledConstants !== null) {
